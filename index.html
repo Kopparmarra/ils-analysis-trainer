@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ILS Analysis Trainer</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <div class="logo">ILS</div>
+        <div>
+          <h1>ILS Analysis Trainer</h1>
+          <p class="subtitle">Pedagogisk demo · LCN → RAMS → LORA → Product Support</p>
+        </div>
+      </div>
+      <div class="header-right">
+        <button class="header-btn ghost" id="termsBtn" type="button">Begrepp</button>
+        <button class="header-btn ghost" id="methodInfoBtn" type="button">Modellinfo</button>
+        <button class="header-btn" id="summaryBtn" type="button" aria-pressed="false">Sammanfattning</button>
+        <button class="header-btn ghost" id="resetBtn" type="button">Nollställ</button>
+        <label class="guide-toggle">
+          <input type="checkbox" id="guideMode" checked>
+          <span>Guidat läge</span>
+        </label>
+      </div>
+    </header>
+
+    <!-- Main layout -->
+    <div class="main">
+      <!-- Left: LCN Tree -->
+      <aside class="sidebar">
+        <div class="panel-header">
+          <h2>1. Logistisk Systemstruktur</h2>
+          <button class="info-btn" id="lcnInfoBtn" type="button" title="Vad är LCN?" aria-label="Vad är LCN?" aria-expanded="false">?</button>
+        </div>
+        <div class="info-box" id="lcnInfoBox" hidden>
+          <p><strong>LCN (Logistic Control Number)</strong> är den logistiska nedbrytningen av systemet.
+          Den visar hur systemet delas upp för underhåll, reservdelar och analys (LSA/S3000L).
+          Den lägsta nivån är oftast en LRU (Line Replaceable Unit).</p>
+          <p class="info-extra"><strong>LCN är inte SNS.</strong> Datamodulkoderna (DMC) i S1000D bygger på SNS,
+          Standard Numbering System, som är en egen nedbrytning av produkten. Koppling mellan LCN och SNS
+          görs i projektets data, inte genom att kopiera numret.</p>
+        </div>
+        <div class="tree" id="lcnTree" role="tree" aria-label="Logistisk systemstruktur"></div>
+        <div class="sidebar-footer">
+          <p class="hint">Klicka på en komponent (blad) för att analysera den. Pilknappar fungerar för navigering.</p>
+          <ul class="legend" aria-label="Förklaring av kritikalitet">
+            <li><span class="criticality high" aria-hidden="true">H</span> Hög kritikalitet</li>
+            <li><span class="criticality medium" aria-hidden="true">M</span> Medel</li>
+            <li><span class="criticality low" aria-hidden="true">L</span> Låg</li>
+          </ul>
+          <p class="hint">Kritikalitet styr stilleståndsvikt och standardvärde för reservservicegrad.</p>
+        </div>
+      </aside>
+
+      <!-- Center: Content -->
+      <main class="content">
+        <!-- Empty state -->
+        <div class="empty-state" id="emptyState">
+          <div class="empty-icon" aria-hidden="true">📊</div>
+          <h2>Välj en komponent i trädet</h2>
+          <p>Börja med att klicka på en LRU (t.ex. Elmotor) för att se RAMS-data,
+             göra en LORA-analys och generera Product Support Package.</p>
+          <div class="guide-steps" id="guideSteps">
+            <div class="step">1. Välj komponent</div>
+            <div class="step">2. Granska RAMS</div>
+            <div class="step">3. Fatta LORA-beslut</div>
+            <div class="step">4. Se Support Package</div>
+          </div>
+        </div>
+
+        <!-- Analysis view -->
+        <div class="analysis-view" id="analysisView" hidden>
+
+
+          <!-- Antaganden -->
+          <details class="panel assumptions-panel">
+            <summary class="panel-header"><h2>Antaganden för flottan (gäller alla komponenter)</h2></summary>
+            <div class="inputs-grid">
+              <label>Antal system<input type="number" data-a="fleetSize" min="1" step="1"></label>
+              <label>Drifttimmar per system och år<input type="number" data-a="hoursPerYear" min="1" step="10"></label>
+              <label>Analysperiod (år)<input type="number" data-a="years" min="1" step="1"></label>
+              <label>Värde av stillestånd (kr/h)<input type="number" data-a="downtimeCostPerH" min="0" step="100"></label>
+              <label>TAT I-level (dygn)<input type="number" data-a="tatI" min="1" step="1"></label>
+              <label>TAT D-level (dygn)<input type="number" data-a="tatD" min="1" step="1"></label>
+              <label>Ledtid ny enhet (dygn)<input type="number" data-a="leadTime" min="1" step="1"></label>
+              <label>Transport till depå (kr/enhet)<input type="number" data-a="transport" min="0" step="100"></label>
+            </div>
+            <p class="def pad">TAT = turn-around time. Stilleståndsvärde och TAT är scenarioantaganden. Modellen tar med en förenklad logistikfördröjning (MLDT), inte all faktisk nertid. Testutrustning behandlas som en engångskostnad per analyserad komponent, utan diskontering.</p>
+          </details>
+
+          <!-- Section 2: RAMS -->
+          <section class="panel rams-panel">
+            <div class="panel-header">
+              <h2>2. RAMS & Tillförlitlighetsdata</h2>
+              <span class="selected-lcn" id="selectedLcn"></span>
+            </div>
+            <div class="rams-grid">
+              <div class="rams-card">
+                <label for="mtbfSlider">MTBF <span class="unit">(timmar per enhet)</span></label>
+                <div class="value-row">
+                  <input type="range" id="mtbfSlider" data-w="mtbf" min="100" max="5000" step="50">
+                  <span class="value" id="mtbfValue"></span>
+                </div>
+                <p class="def">Mean Time Between Failures – genomsnittlig tid mellan fel. Högre = mer tillförlitlig.</p>
+                <p class="meta" id="qtyInfo"></p>
+                <p class="meta" id="failuresInfo"></p>
+              </div>
+              <div class="rams-card">
+                <label for="mttrSlider">MTTR <span class="unit">(minuter)</span></label>
+                <div class="value-row">
+                  <input type="range" id="mttrSlider" data-w="mttr" min="15" max="480" step="15">
+                  <span class="value" id="mttrValue"></span>
+                </div>
+                <p class="def">Mean Time To Repair – aktiv bytes-/reparationstid vid utbyte av enheten. Lägre = snabbare återställning.</p>
+                <p class="meta" id="fieldInfo"></p>
+              </div>
+              <div class="rams-card">
+                <label>Ai – Inherent availability</label>
+                <div class="availability" id="aiValue"></div>
+                <p class="def">MTBF / (MTBF + MTTR). Tar inte hänsyn till logistik, och är därför en optimistisk siffra.</p>
+              </div>
+              <div class="rams-card highlight">
+                <label id="aoLabel">Ao – operativ availability</label>
+                <div class="availability" id="aoValue">–</div>
+                <p class="def">Ao = MTBF / (MTBF + MTTR + MLDT). Visas initialt med modellens rekommenderade strategi och uppdateras när du väljer ett eget beslut. MLDT (Mean Logistics Delay Time) är väntan på reserv och beror på strategin, poolen och TAT.</p>
+                <p class="meta" id="mldtInfo"></p>
+              </div>
+              <div class="rams-card">
+                <label>Felmod (Failure Mode)</label>
+                <div class="failure-mode" id="failureMode"></div>
+                <p class="def">Det vanligaste felsättet som driver underhållsbehovet. I ett verkligt projekt härleds felmoder ur FMECA/RCM, och förebyggande underhåll planeras enligt S4000P.</p>
+                <p class="meta" id="critInfo"></p>
+              </div>
+              <div class="rams-card">
+                <label for="complexitySelect">Komplexitet vid reparation</label>
+                <select id="complexitySelect" data-w="complexity">
+                  <option value="low">Låg – standardverktyg</option>
+                  <option value="medium">Medel – särskild utrustning</option>
+                  <option value="high">Hög – renrum/specialverktyg</option>
+                </select>
+                <label for="serviceSlider" class="spaced">Servicegrad reservdelar</label>
+                <div class="value-row">
+                  <input type="range" id="serviceSlider" data-w="serviceLevel" min="80" max="99" step="1">
+                  <span class="value" id="serviceValue"></span>
+                </div>
+                <p class="def">Sannolikhet att en reserv finns när ett fel inträffar. Hög komplexitet utesluter reparation på I-level.</p>
+              </div>
+            </div>
+            <div class="impact-box" id="impactBox">
+              <strong>Förstå påverkan:</strong>
+              <span id="impactText"></span>
+            </div>
+          </section>
+
+          <!-- Section 3: LORA -->
+          <section class="panel lora-panel">
+            <div class="panel-header">
+              <h2>3. LORA – Level of Repair Analysis</h2>
+            </div>
+            <div class="lora-content">
+              <p class="def guide-only intro">
+                Bytet av den felande enheten (LRU) sker på O-level i fält om den är fältutbytbar. LORA-frågan är vad som sedan ska
+                hända med den utbytta enheten: kasseras den, repareras den på förband (I-level) eller på depå (D-level)?
+                Modellen jämför livscykelkostnad, och den är en förenklad bild av en riktig LORA (S3000L).
+              </p>
+
+              <h3 class="subhead">Kostnadsdata för komponenten (kr)</h3>
+              <div class="inputs-grid">
+                <label>Enhetspris (ny)<input type="number" data-w="unitPrice" min="0" step="500"></label>
+                <label>Reparation I-level (per fel)<input type="number" data-w="repairI" min="0" step="500"></label>
+                <label>Reparation D-level (per fel)<input type="number" data-w="repairD" min="0" step="500"></label>
+                <label>Ej reparerbara, BER (%)<input type="number" data-w="berPct" min="0" max="100" step="5"></label>
+                <label>Testutrustning I-level<input type="number" data-w="testI" min="0" step="10000"></label>
+                <label>Testutrustning D-level<input type="number" data-w="testD" min="0" step="10000"></label>
+              </div>
+              <p class="def pad">BER = Beyond Economic Repair: antagen andel felande enheter som inte repareras ekonomiskt. Värdet är ett scenarioantagande och bör underbyggas med historik eller teknisk bedömning i verkliga analyser.</p>
+
+              <section class="decision-coach guide-only" id="decisionCoach" aria-labelledby="decisionCoachTitle">
+                <h3 id="decisionCoachTitle">Så kan du resonera</h3>
+                <p>Du behöver inte räkna ut allt i huvudet. Jämför tre saker innan du väljer:</p>
+                <ul>
+                  <li><strong>Kostnad per fel:</strong> inköp jämfört med reparation.</li>
+                  <li><strong>Logistik:</strong> hur länge enheten väntar på reparation eller ersättning.</li>
+                  <li><strong>Resurser:</strong> reservpool och eventuell testutrustning.</li>
+                </ul>
+                <p class="def">Välj det alternativ du tror är rimligast utifrån underlaget. Tabellen och modellens rekommendation visas efter ditt val.</p>
+              </section>
+
+              <div class="decision-row">
+                <p class="decision-label" id="decisionLabel">Ditt beslut för utbytt enhet:</p>
+                <div class="decision-buttons" role="group" aria-labelledby="decisionLabel">
+                  <button class="decision-btn" type="button" data-decision="DISCARD" aria-pressed="false">Kassera</button>
+                  <button class="decision-btn" type="button" data-decision="I" aria-pressed="false">I-level (förband)</button>
+                  <button class="decision-btn" type="button" data-decision="D" aria-pressed="false">D-level (depå)</button>
+                </div>
+              </div>
+
+              <div class="recommendation" id="recommendation">
+                <div class="rec-header">
+                  <span class="rec-label">Rekommendation</span>
+                  <span class="rec-badge" id="recBadge">?</span>
+                </div>
+                <p class="rec-reason" id="recReason"></p>
+              </div>
+
+              <div class="consequence-table-wrap" id="consequenceTableWrap">
+                <table class="consequence-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Aspekt</th>
+                      <th scope="col" id="hdr-DISCARD">Kassera</th>
+                      <th scope="col" id="hdr-I">Reparera på I-level</th>
+                      <th scope="col" id="hdr-D">Reparera på D-level</th>
+                    </tr>
+                  </thead>
+                  <tbody id="consequenceBody"></tbody>
+                </table>
+              </div>
+
+              <div class="sensitivity">
+                <h3 class="subhead">Känslighetsanalys – när byter rekommendationen?</h3>
+                <div id="sensitivityBody"></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Section 4: Support Package -->
+          <section class="panel support-panel">
+            <div class="panel-header">
+              <h2>4. Product Support Package</h2>
+              <span class="support-note" id="supportNote"></span>
+            </div>
+            <div class="support-grid" id="supportGrid"></div>
+          </section>
+
+          <!-- Analyst Notes -->
+          <section class="panel notes-panel">
+            <div class="panel-header">
+              <h2>Analyst Notes</h2>
+              <span class="selected-lcn" id="notesLabel"></span>
+            </div>
+            <textarea id="analystNotes" aria-label="Analytikeranteckningar för vald komponent" placeholder="Skriv din motivering här... T.ex. varför du valde kassering, I- eller D-level, vilka antaganden du gjorde, eller vad som skulle ändra beslutet. Anteckningarna sparas per komponent i webbläsaren."></textarea>
+          </section>
+        </div>
+
+        <!-- Summary view -->
+        <div class="analysis-view" id="summaryView" hidden>
+          <section class="panel">
+            <div class="panel-header">
+              <h2>Sammanfattning – alla komponenter</h2>
+              <button class="header-btn dark" id="exportCsv" type="button">Exportera CSV</button>
+            </div>
+            <div class="consequence-table-wrap">
+              <table class="consequence-table summary-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Komponent</th>
+                    <th scope="col">MTBF</th>
+                    <th scope="col">MTTR</th>
+                    <th scope="col">Ai</th>
+                    <th scope="col">Ditt val</th>
+                    <th scope="col">Rekommendation</th>
+                    <th scope="col">Ao</th>
+                    <th scope="col">Total kostnad</th>
+                    <th scope="col">Avvikelse</th>
+                  </tr>
+                </thead>
+                <tbody id="summaryBody"></tbody>
+              </table>
+            </div>
+            <p class="summary-foot" id="summaryFoot"></p>
+          </section>
+        </div>
+      </main>
+      <!-- Right: persistent learning mission rail -->
+      <aside class="mission-rail" id="missionRail" aria-label="Lärandeuppdrag">
+        <!-- Learning missions: shown only in guided mode -->
+        <section class="panel mission-panel guide-only" id="missionPanel" aria-labelledby="missionTitle">
+          <div class="panel-header mission-header">
+            <div>
+              <p class="eyebrow">LÄRANDEUPPDRAG</p>
+              <h2 id="missionTitle">Uppdrag 1 · Förstå sambanden</h2>
+            </div>
+            <div class="mission-actions">
+              <span class="mission-progress" id="missionProgress">0 av 5</span>
+              <button class="header-btn ghost mission-collapse" id="missionCollapse" type="button" aria-expanded="true">Fäll ihop</button>
+              <button class="header-btn ghost mission-rail-toggle" id="missionRailToggle" type="button" aria-expanded="true">Dölj panel</button>
+              <button class="header-btn ghost" id="missionReset" type="button">Nollställ uppdrag</button>
+            </div>
+          </div>
+          <div id="missionBody">
+            <p class="mission-intro" id="missionIntro">Elmotorn har tappat tillgänglighet. Undersök hur reparations- och logistiska antaganden påverkar beslutet.</p>
+            <div class="prediction-box" id="predictionBox">
+              <label for="predictionSelect"><strong>Innan du ändrar MTTR:</strong> vad tror du händer när MTTR sänks?</label>
+              <select id="predictionSelect">
+                <option value="">Välj din förutsägelse …</option>
+                <option value="both">Både Ai och Ao förbättras ungefär lika mycket</option>
+                <option value="ai">Ai förbättras tydligare än Ao, eftersom Ao även påverkas av logistik</option>
+                <option value="neither">Varken Ai eller Ao påverkas nämnvärt</option>
+              </select>
+              <p class="mission-feedback" id="predictionFeedback" aria-live="polite"></p>
+            </div>
+            <ol class="mission-steps" id="missionSteps"></ol>
+            <div class="mission-complete" id="missionComplete" hidden>
+              <strong>Uppdrag 1 klart.</strong> Jämför beslut, resultat och antaganden. Starta uppdrag 2 när du vill gå vidare.
+            </div>
+            <section class="mission-next" id="missionTwo" hidden aria-labelledby="missionTwoTitle">
+              <div class="panel-header"><h3 id="missionTwoTitle">Uppdrag 2 · Utforska LORA</h3><span class="mission-progress" id="missionTwoProgress">0 av 4</span></div>
+              <p class="mission-intro">Jämför flera komponenter och se varför samma reparationsnivå inte passar överallt.</p>
+              <ol class="mission-steps" id="missionTwoSteps"></ol>
+            </section>
+          </div>
+        </section>
+        <section class="panel mission-finish" id="missionFinish" hidden aria-labelledby="missionFinishTitle">
+          <div class="panel-header"><h2 id="missionFinishTitle">Uppdragen klara</h2></div>
+          <div class="mission-finish-body" id="missionFinishBody"></div>
+          <button class="header-btn dark" id="finishExportCsv" type="button">Exportera resultat (CSV)</button>
+        </section>
+        <div class="free-explore-note" id="freeExploreNote" hidden>
+          <strong>Fri utforskning</strong><p>Guidningen är av. Välj valfri komponent, ändra antaganden och jämför LORA-resultat i egen takt. Dina ändringar sparas lokalt i webbläsaren.</p>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+
+  <dialog class="method-dialog" id="methodDialog" aria-labelledby="methodTitle">
+    <div class="method-dialog-header">
+      <div><p class="eyebrow">OM MODELLEN</p><h2 id="methodTitle">Modellens omfattning och begränsningar</h2></div>
+      <span class="model-tag">Fiktiv demonstrationsmodell</span>
+    </div>
+    <div class="method-content">
+      <p class="method-lead">Det här är en <strong>förenklad demonstrationsmodell</strong> för att utforska hur reparationsstrategier kan påverka kostnad och tillgänglighet. Den är inte en godkänd LORA eller en verifierad kostnadsprognos.</p>
+      <div class="method-summary-grid">
+        <section><h3>Vad modellen gör</h3><p>Jämför kassering, reparation på I-level och reparation på D-level med hjälp av kostnader, reservpool och förenklade Ai/Ao-beräkningar.</p></section>
+        <section><h3>Viktiga förenklingar</h3><p>Antar oberoende fel med konstant felintensitet och använder en Poissonapproximation för reservpoolen. Systemredundans och missionseffekt ingår inte.</p></section>
+        <section><h3>Vad du ska tänka på</h3><p>Alla komponentdata, kostnader, SNS och DMC-exempel är fiktiva. Resultaten beror på antagandena och ska inte användas som verkligt beslutsunderlag utan validering.</p></section>
+      </div>
+      <details class="method-more"><summary>Visa alla antaganden och begränsningar</summary>
+        <ul>
+          <li><strong>Felmodell:</strong> flottans förväntade fel beräknas från antal system, installerade enheter, drifttimmar och MTBF.</li>
+          <li><strong>Reservpool:</strong> faktisk efterfrågan påverkas även av variation i ledtid, gemensamma fel och operativa begränsningar.</li>
+          <li><strong>Kostnad:</strong> reparations-/inköpskostnader över analysperioden, beräknad reservpool, engångskostnad för testutrustning och modellerad logistikrelaterad stilleståndskostnad summeras. Ingen diskontering, inflation, kassaflödesprofil eller restvärde modelleras.</li>
+          <li><strong>Tillgänglighet:</strong> Ai och Ao är förenklade indikatorer. Ao använder MTBF för komponenttypen och en uppskattad logistisk fördröjning.</li>
+          <li><strong>MLDT-metod:</strong> uppskattningen använder basfördröjning + sannolikhet för slut på reserv × TAT × 24 / 2. Det är en förenklad heuristik för övningen, inte en validerad prognos av verklig väntetid.</li>
+          <li><strong>Supportdata:</strong> DMC och informationskoder måste verifieras mot projektets SNS, BREX och dokumentationsregler.</li>
+        </ul>
+      </details>
+      <p class="method-note">Använd appen för att experimentera och dokumentera resonemang. Kontrollera formler och indata med ämnesexpert innan resultaten används i ett verkligt projekt.</p>
+    </div>
+    <div class="method-dialog-actions"><label class="remember-method"><input type="checkbox" id="rememberMethodInfo" checked> Öppna inte automatiskt igen</label><button class="header-btn" id="closeMethodDialog" type="button">Öppna analysen</button></div>
+  </dialog>
+
+  <dialog id="termsDialog" class="method-dialog">
+    <div class="method-dialog-header"><h2>Begrepp i korthet</h2><button class="header-btn ghost" id="closeTermsTop" type="button">Stäng</button></div>
+    <div class="method-dialog-content">
+      
+      <section class="glossary-entry"><h3>MTBF – tid mellan fel</h3><p>Genomsnittlig drifttid mellan fel. Högre MTBF innebär normalt färre förväntade fel.</p></section>
+      <section class="glossary-entry"><h3>MTTR – reparationstid</h3><p>Genomsnittlig aktiv tid för att reparera eller återställa en enhet. Logistisk väntan kan tillkomma.</p></section>
+      <section class="glossary-entry"><h3>Ai och Ao – tillgänglighet</h3><p>Förenklade tillgänglighetsmått. Ai fokuserar på inneboende tillgänglighet; Ao tar även hänsyn till modellerad logistisk fördröjning.</p></section>
+      <section class="glossary-entry"><h3>LORA – val av reparationsnivå</h3><p>Analys av var en felande enhet bör repareras eller om den bör kasseras och ersättas.</p></section>
+      <section class="glossary-entry"><h3>BER – Beyond Economic Repair</h3><p>En enhet bedöms inte vara ekonomiskt rimlig att reparera enligt tillämpade kriterier. Det är inte en automatisk kassationsprocent.</p></section>
+      <section class="glossary-entry"><h3>TAT – genomloppstid</h3><p>Tid från att en reparation eller hantering startar tills enheten åter är tillgänglig enligt modellens förenkling.</p></section>
+      <section class="glossary-entry"><h3>MLDT – logistisk fördröjning</h3><p>Modellens uppskattning av väntan kopplad till reservtillgång och genomloppstid. Det är en heuristik, inte en exakt prognos.</p></section>
+      <section class="glossary-entry"><h3>LRU / LCN / DMC</h3><p>LRU är en utbytbar enhet; LCN är en logistisk strukturkod; DMC är en kod för underhållsdokumentation och härleds inte från LCN.</p></section>
+    </div>
+    <div class="method-dialog-actions"><button class="header-btn" id="closeTerms" type="button">Klart</button></div>
+  </dialog>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
