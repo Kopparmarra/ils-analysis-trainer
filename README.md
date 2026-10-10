@@ -1,4 +1,4 @@
-# ILS Analysis Trainer v41 – Radiomodul as Mission 2
+# ILS Analysis Trainer v44 – MTTR increase prediction
 
 En svensk, fristående lärapp för grundläggande LORA-resonemang med fiktiva data och förenklade beräkningar.
 
@@ -11,7 +11,8 @@ En svensk, fristående lärapp för grundläggande LORA-resonemang med fiktiva d
 - `index.html` – gränssnitt och metodnoter
 - `styles.css` – layout och styling
 - `data.js` – fiktiv systemstruktur och modellantaganden
-- `app.js` – logik, uppdragsflöde och LORA-guide (Claude-versionen som användaren tillhandahöll)
+- `app.js` – logik, uppdragsflöde och LORA-guide
+- Uppdrag 1: förutsäg nu effekten av att höja MTTR. Uppgiften kräver att värdet faktiskt höjs över utgångsvärdet; sänkning eller annan ändring räknas inte som slutförd. Förklaringen efter ändringen beskriver konsekvensen för Ai och Ao.
 - `LICENSE` – licens
 
 ## Viktigt

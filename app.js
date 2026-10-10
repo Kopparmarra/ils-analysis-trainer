@@ -709,7 +709,7 @@ document.querySelectorAll("[data-w]").forEach(el => {
     } else {
       const rule = INPUT_RULES[k] || { min: el.min !== "" ? Number(el.min) : 0, max: el.max !== "" ? Number(el.max) : 1e9 };
       w[k] = boundedNumber(el.value, rule);
-      if (selected.id === MISSION_MOTOR_ID && k === "mttr" && missionState.prediction && Math.abs(w[k] - Number(missionState.mttrBaseline ?? selected.rams.mttr)) > 0.01) missionState.mttrChanged = true;
+      if (selected.id === MISSION_MOTOR_ID && k === "mttr" && missionState.prediction && w[k] > Number(missionState.mttrBaseline ?? selected.rams.mttr) + 0.01) missionState.mttrChanged = true;
       if (el.type !== "range") el.value = w[k];
     }
     saveState(); renderAll();
@@ -781,7 +781,7 @@ function missionOneChecks() {
   const an = motor ? analyze(motor) : null;
   return [
     { done: missionState.componentsVisited.includes(MISSION_MOTOR_ID), title: "Välj Elmotor", learn: "Börja med en avgränsad komponent så att du kan koppla indata till konsekvenser.", action: "Välj Elmotor i LCN-trädet." },
-    { done: missionState.prediction !== "" && missionState.mttrChanged, title: "Förutsäg och ändra MTTR", learn: "Ai bygger på reparations-/återställningstid i den här förenklade modellen. Ao påverkas dessutom av logistisk fördröjning, så effekten behöver inte bli lika stor.", action: "Välj förutsägelse nedan och ändra sedan MTTR-reglaget i analysen." },
+    { done: missionState.prediction !== "" && missionState.mttrChanged, title: "Förutsäg och ändra MTTR", learn: "Ai bygger på reparations-/återställningstid i den här förenklade modellen. Ao påverkas dessutom av logistisk fördröjning, så effekten behöver inte bli lika stor.", action: "Välj förutsägelse nedan och höj sedan MTTR-reglaget i analysen. Dra reglaget åt höger." },
     { done: Boolean(motorDecision), title: "Fatta ett LORA-beslut", learn: "Ett beslut väger kostnad och logistik mot var reparation kan utföras. Modellens rekommendation är ett jämförelseunderlag, inte ett universellt facit.", action: "Välj kassera, I-level eller D-level." },
     { done: note.length >= 20, title: "Motivera beslutet", learn: "En spårbar analys behöver visa vilka antaganden och avvägningar som ligger bakom valet.", action: "Skriv minst 20 tecken i Analyst Notes för Elmotor." },
     { done: missionState.sensitivityReviewed, title: "Undersök vad som kan ändra beslutet", learn: "Känslighetsanalys visar vilka indata som kan flytta modellens rekommendation – och var beslutet är känsligt.", action: "Granska känslighetsanalysen och markera den som granskad." }
@@ -963,7 +963,7 @@ function renderMissions() {
     (predictionStep === "2" || predictionStep === "review-2");
   predictionBox.hidden = !showPrediction;
   const predictionLabel = predictionBox.querySelector("label");
-  if (predictionLabel) predictionLabel.innerHTML = "<strong>Förutsägelse:</strong> vad tror du händer när MTTR sänks?";
+  if (predictionLabel) predictionLabel.innerHTML = "<strong>Förutsägelse:</strong> vad tror du händer när MTTR höjs?";
   $("missionComplete").hidden = !oneComplete || missionState.missionTwoStarted;
   $("missionTwo").hidden = !missionState.missionTwoStarted;
   $("missionTitle").textContent = missionState.missionTwoStarted ? "Uppdrag 2 · Utforska LORA" : (oneComplete ? "Uppdrag 1 · Klart" : "Uppdrag 1 · Förstå sambanden");
@@ -971,10 +971,10 @@ function renderMissions() {
   const changed = missionState.mttrChanged;
   const feedback = $("predictionFeedback");
   if (!missionState.prediction) { feedback.textContent = "Välj en förutsägelse innan du ändrar MTTR."; feedback.className = "mission-feedback"; }
-  else if (!changed) { feedback.textContent = "Bra – nu ändrar du MTTR och jämför med resultatet."; feedback.className = "mission-feedback"; }
+  else if (!changed) { feedback.textContent = "Bra – höj nu MTTR-reglaget åt höger och jämför med utgångsläget."; feedback.className = "mission-feedback"; }
   else {
-    const predictionText = { both: "Du förutsåg att Ai och Ao skulle förbättras ungefär lika mycket.", ai: "Du förutsåg att Ai skulle förbättras tydligare än Ao.", neither: "Du förutsåg att ingen av indikatorerna skulle påverkas nämnvärt." }[missionState.prediction];
-    feedback.textContent = `${predictionText} Jämför värdena som visas nu. I modellen påverkas Ai direkt av MTTR, medan Ao även innehåller MLDT/logistikfördröjning.`;
+    const predictionText = { both: "Du förutsåg att Ai och Ao skulle försämras ungefär lika mycket.", ai: "Du förutsåg att Ai skulle försämras tydligare än Ao.", neither: "Du förutsåg att ingen av indikatorerna skulle påverkas nämnvärt." }[missionState.prediction];
+    feedback.textContent = `${predictionText} Jämför värdena med utgångsläget. När MTTR höjs blir den aktiva reparationstiden längre och Ai sjunker. Ao påverkas också, men MLDT/logistikfördröjning ingår dessutom och kan göra förändringen mindre tydlig.`;
     feedback.className = "mission-feedback has-result";
   }
 if (oneComplete || missionState.missionTwoStarted) {
@@ -1003,7 +1003,7 @@ $("predictionSelect").addEventListener("change", e => {
   if (missionState.prediction && selected?.id === MISSION_MOTOR_ID) {
     const currentMttr = getWorking(selected).mttr;
     if (missionState.mttrBaseline == null) missionState.mttrBaseline = currentMttr;
-    missionState.mttrChanged = Math.abs(currentMttr - Number(missionState.mttrBaseline)) > 0.01;
+    missionState.mttrChanged = currentMttr > Number(missionState.mttrBaseline) + 0.01;
   }
   saveState();
   renderMissions();
