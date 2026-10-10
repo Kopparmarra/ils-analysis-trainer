@@ -1,4 +1,4 @@
-# ILS Analysis Trainer v38 – Guided LORA decision bridge
+# ILS Analysis Trainer v41 – Radiomodul as Mission 2
 
 En svensk, fristående lärapp för grundläggande LORA-resonemang med fiktiva data och förenklade beräkningar.
 
@@ -50,3 +50,18 @@ The first LORA question is intentionally simplified to compare repair cost only.
 - Each question is answered before its explanation appears, reducing the jump from single-factor exercises to an independent LORA decision.
 - Migrates the LORA guide to version 4 and resets its answers/step so earlier saved answers do not map to the new sequence; other saved progress is retained.
 - This remains a simplified learning model, not a validated LORA assessment.
+
+
+## v41 – Uppdrag 2 med Radiomodul
+- Uppdrag 2 använder nu 02B01 Radiomodul i stället för en generell övning över flera komponenter.
+- Användaren läser själv komponentunderlaget i mittenkolumnen, ändrar MTBF eller MTTR, fattar LORA-beslut, motiverar valet och granskar sammanfattningen.
+- Stödet är något mindre än i Uppdrag 1, men varje avklarat steg har fortfarande en förklaring.
+- När Uppdrag 2 startar väljs Radiomodul automatiskt och komponentens aktuella RAMS-värden sparas som jämförelsepunkt för övningen.
+- De sparade svaren i LORA-miniguiden migreras en gång eftersom versionsnumret höjs.
+
+
+## v43 – tydligare analysperiod och kostnadslogik
+- Analysperioden visas direkt i LORA-panelen och hämtas dynamiskt från flottans antaganden.
+- Förklarar att total kostnad inkluderar direkt livscykelkostnad plus modellerad stilleståndskostnad.
+- Tabellen benämner raden ”Direkt livscykelkostnad (exkl. stillestånd)” så att den inte blandas ihop med totalsumman.
+- Rekommendationen anger analysperiod och beskriver vilka kostnader som ingår i totalen.

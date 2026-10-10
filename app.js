@@ -32,7 +32,8 @@ const TRAINING_NOTE = {
 };
 const STORAGE_KEY = "ils-sandbox-v2";
 const MISSION_MOTOR_ID = "01A01";
-const MISSION_STORAGE_DEFAULTS = { prediction: "", mttrChanged: false, mttrBaseline: null, sensitivityReviewed: false, componentsVisited: [], dLevelExplained: false, summaryOpened: false, missionTwoStarted: false, reviewedMissionOneSteps: [], reviewedMissionTwoSteps: [], loraGuideStep: 0, loraGuideAnswers: {}, loraGuideVersion: 4, collapsed: false, railCollapsed: false };
+const MISSION_TWO_COMPONENT_ID = "02B01";
+const MISSION_STORAGE_DEFAULTS = { prediction: "", mttrChanged: false, mttrBaseline: null, sensitivityReviewed: false, componentsVisited: [], dLevelExplained: false, summaryOpened: false, missionTwoStarted: false, missionTwoBaseline: null, reviewedMissionOneSteps: [], reviewedMissionTwoSteps: [], loraGuideStep: 0, loraGuideAnswers: {}, loraGuideVersion: 7, collapsed: false, railCollapsed: false };
 const missionState = { ...MISSION_STORAGE_DEFAULTS };
 
 /* ===== State ===== */
@@ -79,8 +80,8 @@ function loadState() {
     Object.assign(notes, s.notes || {});
     if (s.missionState && typeof s.missionState === "object") {
       Object.assign(missionState, MISSION_STORAGE_DEFAULTS, s.missionState);
-      if (Number(s.missionState.loraGuideVersion || 1) < 4) { missionState.loraGuideStep = 0; missionState.loraGuideAnswers = {}; }
-      missionState.loraGuideVersion = 4;
+      if (Number(s.missionState.loraGuideVersion || 1) < 7) { missionState.loraGuideStep = 0; missionState.loraGuideAnswers = {}; }
+      missionState.loraGuideVersion = 7;
       missionState.componentsVisited = Array.isArray(missionState.componentsVisited) ? missionState.componentsVisited.filter(id => components.some(c => c.id === id)) : [];
       if (! ["", "both", "ai", "neither"].includes(missionState.prediction)) missionState.prediction = "";
     }
@@ -410,6 +411,8 @@ function renderAll() {
   if (view === "analysis" && selected) {
     const an = analyze(selected);
     renderRAMS(an);
+    const periodLabel = $("loraAnalysisYears");
+    if (periodLabel) periodLabel.textContent = A.years;
     renderLORA(an);
     renderSupport(an);
   } else if (view === "summary") {
@@ -529,7 +532,7 @@ function renderLORA(an) {
   };
 
   $("consequenceBody").innerHTML = [
-    row("Livscykelkostnad", x => fmtSEK(x.lifecycle)),
+    row("Direkt livscykelkostnad (exkl. stillestånd)", x => fmtSEK(x.lifecycle)),
     row("– varav reparation/inköp", x => fmtSEK(x.operating)),
     row("– varav reservpool", x => fmtSEK(x.poolCost)),
     row("– varav testutrustning", x => fmtSEK(x.fixed)),
@@ -560,7 +563,7 @@ function buildReason(an, decision) {
   const rec = an.recommended;
   const others = STRATEGIES.filter(k => k !== rec && r[k].available).sort((a, b) => r[a].total - r[b].total);
   const parts = [];
-  parts.push(`${STRATEGY_NAME[rec]} ger lägst total kostnad över ${A.years} år (${fmtSEK(r[rec].total)}).`);
+  parts.push(`Analysperioden är ${A.years} år. ${STRATEGY_NAME[rec]} ger lägst total beräknad kostnad inklusive modellerat stillestånd: ${fmtSEK(r[rec].total)}. Tabellen skiljer mellan direkt livscykelkostnad (inköp/reparation, reservpool och testutrustning) och stilleståndskostnad; raden ”Total” summerar båda.`);
   if (others.length) {
     const o = others[0];
     const diff = (r[o].total - r[rec].total) / r[rec].total * 100;
@@ -667,7 +670,7 @@ function renderSummary() {
 }
 
 function exportCsv() {
-  const head = ["LCN", "Komponent", "MTBF (h)", "MTTR (min)", "Ai (%)", "Ditt val", "Rekommendation", "Ao (%)", "Livscykelkostnad (kr)", "Stilleståndskostnad (kr)", "Total kostnad (kr)", "Avvikelse (kr)", "Flotta", "Drifttimmar/system/år", "Analysperiod (år)", "Stilleståndsvärde (kr/h)", "TAT I (dygn)", "TAT D (dygn)", "Ledtid ny enhet (dygn)", "Transport (kr)"];
+  const head = ["LCN", "Komponent", "MTBF (h)", "MTTR (min)", "Ai (%)", "Ditt val", "Rekommendation", "Ao (%)", "Direkt livscykelkostnad exkl. stillestånd (kr)", "Stilleståndskostnad (kr)", "Total kostnad (kr)", "Avvikelse (kr)", "Flotta", "Drifttimmar/system/år", "Analysperiod (år)", "Stilleståndsvärde (kr/h)", "TAT I (dygn)", "TAT D (dygn)", "Ledtid ny enhet (dygn)", "Transport (kr)"];
   const csvCell = value => { const str = String(value ?? ""); return /[;"\n\r]/.test(str) ? '"' + str.replace(/"/g, '""') + '"' : str; };
   const lines = [head.map(csvCell).join(";")];
   summaryRows().forEach(r => {
@@ -786,13 +789,19 @@ function missionOneChecks() {
 }
 
 function missionTwoChecks() {
-  const dComponents = components.filter(c => analyze(c).recommended === "D");
-  const dWithExplanation = dComponents.some(c => (notes[c.id] || "").trim().length >= 20);
+  const radio = components.find(c => c.id === MISSION_TWO_COMPONENT_ID);
+  if (!radio) return [];
+  const w = getWorking(radio);
+  const baseline = missionState.missionTwoBaseline || { mtbf: radio.rams.mtbf, mttr: radio.rams.mttr };
+  const changedRams = Math.abs(Number(w.mtbf) - Number(baseline.mtbf)) > 0.01 || Math.abs(Number(w.mttr) - Number(baseline.mttr)) > 0.01;
+  const note = (notes[MISSION_TWO_COMPONENT_ID] || "").trim();
+  const decision = decisions[MISSION_TWO_COMPONENT_ID];
   return [
-    { done: missionState.componentsVisited.filter(id => decisions[id]).length >= 3, title: "Fatta beslut för tre komponenter", learn: "Olika MTBF, komplexitet, reparationskostnader och kritikalitet kan ge olika utfall.", action: "Välj minst tre komponenter och fatta beslut för var och en." },
-    { done: dComponents.length > 0 && dComponents.some(c => decisions[c.id] === "D"), title: "Hitta en komponent där du väljer D-level", learn: "D-level kan vara motiverat när reparationsmöjligheter, kompetens och ekonomi talar för depåreparation.", action: dComponents.length ? `Välj D-level för en komponent där modellen rekommenderar D-level (${dComponents.map(c => c.name).join(", ")}).` : "Med nuvarande antaganden finns ingen D-level-rekommendation. Ändra scenarioantaganden eller återkom senare.", unavailable: dComponents.length === 0 },
-    { done: dWithExplanation, title: "Förklara varför i Analyst Notes", learn: "Ett beslut blir begripligt när du kopplar det till konkreta data och redovisar vad modellen inte fångar.", action: "Skriv minst 20 tecken i anteckningarna för en D-level-rekommenderad komponent." },
-    { done: missionState.summaryOpened, title: "Öppna sammanfattningen", learn: "Sammanfattningen hjälper dig att jämföra konsekvenserna mellan komponenter i stället för att bedöma varje beslut isolerat.", action: "Öppna Sammanfattning i sidhuvudet." }
+    { done: missionState.componentsVisited.includes(MISSION_TWO_COMPONENT_ID), title: "Läs underlaget för Radiomodul", learn: "Titta i mittenkolumnen på komponentens felbild, RAMS-data, kostnader och stödresurser. Utgå från underlaget i stället för att gissa utifrån komponentnamnet.", action: "Välj 02B01 Radiomodul i LCN-trädet och läs komponentinformationen i mittenkolumnen." },
+    { done: changedRams, title: "Undersök MTBF eller MTTR", learn: "MTBF påverkar hur ofta fel förväntas uppstå. MTTR påverkar reparationstiden. Ändra en parameter i taget och observera hur resultatet förändras; värdena i den här övningen är fiktiva.", action: "Justera MTBF eller MTTR för Radiomodul. Du behöver inte hitta ett perfekt värde – undersök vad som händer." },
+    { done: Boolean(decision), title: "Fatta ett LORA-beslut", learn: "Väg kostnad och reparationsmöjlighet mot transport, ledtid och hur viktig snabb återställning är. Modellens rekommendation är ett underlag, inte ett universellt facit.", action: "Välj Kassera, I-level eller D-level för Radiomodul." },
+    { done: note.length >= 20, title: "Motivera ditt val", learn: "En användbar motivering hänvisar till konkreta uppgifter och visar vilken avvägning du gjort. Det är okej att skilja sig från modellens rekommendation om du kan förklara varför.", action: "Skriv minst 20 tecken i Analyst Notes för Radiomodul. Nämn minst en faktor som påverkade ditt val." },
+    { done: missionState.summaryOpened, title: "Jämför i sammanfattningen", learn: "Jämför ditt beslut med modellens rekommendation och kostnadsresultat. En avvikelse är en anledning att undersöka antagandena, inte automatiskt ett fel.", action: "Öppna Sammanfattning i sidhuvudet och granska Radiomodul." }
   ];
 }
 
@@ -800,14 +809,26 @@ function renderLoraMiniGuide() {
   const step = Number(missionState.loraGuideStep || 0);
   const answers = missionState.loraGuideAnswers || {};
   const motor = components.find(c => c.id === MISSION_MOTOR_ID);
-  const w = motor ? getWorking(motor) : { repairI: 900, repairD: 700, unitPrice: 4200, berPct: 20, testI: 40000, testD: 120000 };
-  const ber = Math.min(100, Math.max(0, Number(w.berPct) || 0)) / 100;
-  const repairI = Math.max(0, Number(w.repairI) || 0);
-  const repairD = Math.max(0, Number(w.repairD) || 0);
+  const radio = components.find(c => c.id === MISSION_TWO_COMPONENT_ID);
+  // In Mission 2, the guide must use the Radiomodul data; otherwise use the
+  // currently selected component (falling back to Elmotor before a selection).
+  const guideComponent = missionState.missionTwoStarted ? (radio || selected || motor) : (selected || motor || radio);
+  const w = guideComponent ? getWorking(guideComponent) : { repairI: 0, repairD: 0, unitPrice: 0, berPct: 0, testI: 0, testD: 0 };
+  // Use the selected component's visible cost inputs when present, with its
+  // own working data as fallback. Never silently fall back to Elmotor prices.
+  const guideValue = key => {
+    const field = document.querySelector(`[data-w="${key}"]`);
+    const fieldBelongsToSelected = field && (!selected || selected.id === guideComponent?.id);
+    const n = fieldBelongsToSelected && field.value !== "" ? Number(field.value) : Number(w[key]);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const ber = Math.min(100, Math.max(0, guideValue("berPct"))) / 100;
+  const repairI = Math.max(0, guideValue("repairI"));
+  const repairD = Math.max(0, guideValue("repairD"));
   const transport = Math.max(0, Number(A.transport) || 0);
-  const unitPrice = Math.max(0, Number(w.unitPrice) || 0);
-  const testI = Math.max(0, Number(w.testI) || 0);
-  const testD = Math.max(0, Number(w.testD) || 0);
+  const unitPrice = Math.max(0, guideValue("unitPrice"));
+  const testI = Math.max(0, guideValue("testI"));
+  const testD = Math.max(0, guideValue("testD"));
   const iPerFailure = (1 - ber) * repairI + ber * unitPrice;
   const dPerFailure = (1 - ber) * (repairD + transport) + ber * unitPrice;
   const dWithTransportNoBer = repairD + transport;
@@ -816,12 +837,12 @@ function renderLoraMiniGuide() {
   const breakEven = savingPerFailure > 0 && extraInvestment > 0 ? Math.ceil(extraInvestment / savingPerFailure) : null;
   const fmt = n => fmtSEK(n);
   const questions = [
-    { title: "1. Börja enkelt: jämför de tre alternativen", prompt: "Vi börjar enkelt. Jämför de tre alternativen utifrån kostnaden för kassering eller reparation. Vi bortser tills vidare från transportkostnader och BER. Vilket alternativ har lägst direktkostnad?", options: [
+    { title: `1. Börja enkelt: jämför de tre alternativen för ${guideComponent?.name || "komponenten"}`, prompt: `Vi börjar enkelt med ${guideComponent?.name || "den valda komponenten"}. Jämför kostnaderna i underlaget för kassering eller reparation. Vi bortser tills vidare från transportkostnader och BER. Vilket alternativ har lägst direktkostnad?`, options: [
       `Kassera och köpa nytt: ${fmt(unitPrice)}`,
       `Reparera på I-level: ${fmt(repairI)}`,
       `Reparera på D-level: ${fmt(repairD)}`
     ], correct: Math.min(unitPrice, repairI, repairD) === unitPrice ? 0 : (repairI <= repairD ? 1 : 2),
-    explain: `Vi jämför bara grundkostnaden: nytt ${fmt(unitPrice)}, I-level ${fmt(repairI)} och D-level ${fmt(repairD)}. Det här är första delen av LORA. Senare lägger vi till fler faktorer för att se hur de påverkar beslutet.` },
+    explain: `För ${guideComponent?.name || "den valda komponenten"} jämför vi bara grundkostnaden: nytt ${fmt(unitPrice)}, I-level ${fmt(repairI)} och D-level ${fmt(repairD)}. Beloppen hämtas från just den här komponentens kostnadsdata. Senare lägger vi till fler faktorer för att se hur de påverkar beslutet.` },
     { title: "2. Vem behöver testutrustningen?", prompt: `För att reparera med motsvarande kvalitet behöver både I-level och D-level rätt test- och reparationsutrustning. Vad kan vara den centrala ekonomiska fördelen med D-level?`, options: [
       "D-level behöver aldrig testutrustning",
       "En central verkstad kan dela dyr specialutrustning mellan flera användarställen",
@@ -838,11 +859,11 @@ function renderLoraMiniGuide() {
       "Den ersätts med en ny enhet i stället för att repareras",
       "Transportkostnaden blir alltid dubbelt så hög"
     ], correct: 1, explain: "I modellen ersätts BER-enheter med en ny enhet. BER är en bedömning, inte en automatisk regel om att en fast andel alltid måste kasseras. Nu kan vi väga in både transport och BER i kostnadsjämförelsen." },
-    { title: "5. När lönar sig central reparation?", prompt: "Tänk på ett förenklat scenario med flera användarställen. Lokal I-level-kapacitet kräver sammanlagt 240 000 kr i utrustning. En gemensam D-level-verkstad kostar 160 000 kr att etablera, men transporten gör att varje D-level-reparation kostar 3 000 kr mer än en I-level-reparation. Vad visar kalkylen?", options: [
-      "D-level sparar 80 000 kr i etablering, vilket motsvarar cirka 27 reparationers extra transportkostnad",
-      "D-level är alltid bäst eftersom utrustningen är central",
-      "I-level är alltid bäst eftersom transport kostar pengar"
-    ], correct: 0, explain: "Den centrala verkstaden kostar 80 000 kr mindre att etablera (240 000 − 160 000). Men varje reparation kostar 3 000 kr mer i transport. 80 000 ÷ 3 000 ≈ 26,7: efter cirka 27 reparationer har transportmerkostnaden ätit upp etableringsfördelen, om vi isolerar just dessa poster. I det här förenklade exemplet är D-level alltså inte automatiskt billigast över hela analysperioden. Andra reparationskostnader, reservhållning, nyttjandegrad och ledtid måste också vägas in." },
+    { title: "5. När lönar sig central reparation?", prompt: `Använd nu Radiomodule ns faktiska kostnadsdata. Utrustning för I-level kostar ${fmt(testI)} kr och för D-level ${fmt(testD)} kr. En I-level-reparation kostar ${fmt(repairI)} kr. En D-level-reparation kostar ${fmt(repairD)} kr plus ${fmt(transport)} kr i transport. Vilket alternativ är billigast om vi bara jämför dessa kostnader?`.replace("Radiomodule ns", "Radiomodulens"), options: [
+      `I-level är billigare både i utrustning och per reparation`,
+      `D-level är billigare både i utrustning och per reparation`,
+      `Kostnaderna går åt olika håll: ett alternativ är billigare i utrustning men dyrare per reparation`
+    ], correct: (testI <= testD && repairI <= dWithTransportNoBer) ? 0 : ((testD <= testI && dWithTransportNoBer <= repairI) ? 1 : 2), explain: `Med de värden som visas för ${guideComponent?.name || "komponenten"} kostar I-level-utrustningen ${fmt(testI)} kr och D-level-utrustningen ${fmt(testD)} kr. Per fel kostar I-level ${fmt(repairI)} kr, medan D-level kostar ${fmt(repairD)} + ${fmt(transport)} i transport = ${fmt(dWithTransportNoBer)} kr. ${testI <= testD && repairI <= dWithTransportNoBer ? "Med just dessa antaganden är I-level billigare både i etablering och per reparation. D-level når därför ingen ekonomisk brytpunkt i denna förenklade jämförelse." : testD <= testI && dWithTransportNoBer <= repairI ? "Med just dessa antaganden är D-level billigare både i etablering och per reparation, innan andra kostnader och ledtid vägs in." : "Kostnaderna går åt olika håll: ett alternativ kan vara billigare i etablering men dyrare per reparation. Då behöver du jämföra hur många reparationer som väntas under analysperioden för att hitta eventuell brytpunkt."} Jämförelsen använder samma kostnadsdata som panelen till vänster. Den är förenklad och omfattar inte automatiskt stillestånd, reservhållning, bemanning eller nyttjandegrad.` },
     { title: "6. När är kassering rimligt?", prompt: "Vilket fall talar starkast för att kassera enheten i stället för att reparera den?", options: [
       "En reparationsmetod har lägre kostnad per reparation",
       "Enheten bedöms inte vara ekonomiskt eller tekniskt reparerbar",
@@ -1017,6 +1038,12 @@ document.addEventListener("click", e => {
   if (e.target.closest("#startMissionTwo")) {
     missionState.missionTwoStarted = true;
     missionState.collapsed = false;
+    const radio = components.find(c => c.id === MISSION_TWO_COMPONENT_ID);
+    if (radio) {
+      const w = getWorking(radio);
+      missionState.missionTwoBaseline = { mtbf: Number(w.mtbf), mttr: Number(w.mttr) };
+      selectComponent(radio);
+    }
     saveState();
     renderMissions();
   }
