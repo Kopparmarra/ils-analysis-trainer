@@ -453,8 +453,8 @@ function renderRAMS(an) {
 
   $("failureMode").textContent = node.rams.failureMode;
   $("fieldInfo").textContent = node.fieldReplaceable
-    ? "Fältutbytbar: bytet sker på O-level."
-    : `Ej fältutbytbar: enheten måste till I-level för byte, vilket ger +${NON_FIELD_PENALTY_H} h nertid per fel.`;
+    ? "Fältutbytbar: själva LRU-bytet sker på O-level. I-/D-level-strategin påverkar reparationskedjan, logistiken och därmed Ao."
+    : `Ej fältutbytbar: enheten kan inte bytas direkt i fält. Modellen lägger därför till ${NON_FIELD_PENALTY_H} h nertid per fel; vald strategi påverkar också logistisk väntan och Ao.`;
 
   let impact;
   if (an.ai >= 0.99) impact = `Inherent availability är ${fmtPct(an.ai)}. Komponenten är tillförlitlig i sig, så skillnaden mellan strategierna avgörs främst av kostnad och logistikfördröjning.`;
@@ -781,7 +781,7 @@ function missionOneChecks() {
   const an = motor ? analyze(motor) : null;
   return [
     { done: missionState.componentsVisited.includes(MISSION_MOTOR_ID), title: "Välj Elmotor", learn: "Börja med en avgränsad komponent så att du kan koppla indata till konsekvenser.", action: "Välj Elmotor i LCN-trädet." },
-    { done: missionState.prediction !== "" && missionState.mttrChanged, title: "Förutsäg och ändra MTTR", learn: "Ai bygger på reparations-/återställningstid i den här förenklade modellen. Ao påverkas dessutom av logistisk fördröjning, så effekten behöver inte bli lika stor.", action: "Välj förutsägelse nedan och höj sedan MTTR-reglaget i analysen. Dra reglaget åt höger." },
+    { done: missionState.prediction !== "" && missionState.mttrChanged, title: "Förutsäg och ändra MTTR", learn: "Ai bygger på reparations-/återställningstid i den här förenklade modellen. Ao påverkas dessutom av logistisk fördröjning, så effekten behöver inte bli lika stor.", action: "Välj förutsägelse ovan och höj sedan MTTR-reglaget i analysen. Dra reglaget åt höger." },
     { done: Boolean(motorDecision), title: "Fatta ett LORA-beslut", learn: "Ett beslut väger kostnad och logistik mot var reparation kan utföras. Modellens rekommendation är ett jämförelseunderlag, inte ett universellt facit.", action: "Välj kassera, I-level eller D-level." },
     { done: note.length >= 20, title: "Motivera beslutet", learn: "En spårbar analys behöver visa vilka antaganden och avvägningar som ligger bakom valet.", action: "Skriv minst 20 tecken i Analyst Notes för Elmotor." },
     { done: missionState.sensitivityReviewed, title: "Undersök vad som kan ändra beslutet", learn: "Känslighetsanalys visar vilka indata som kan flytta modellens rekommendation – och var beslutet är känsligt.", action: "Granska känslighetsanalysen och markera den som granskad." }

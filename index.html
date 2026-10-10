@@ -119,7 +119,7 @@
                   <input type="range" id="mttrSlider" data-w="mttr" min="15" max="480" step="15">
                   <span class="value" id="mttrValue"></span>
                 </div>
-                <p class="def">Mean Time To Repair – aktiv bytes-/reparationstid vid utbyte av enheten. Lägre = snabbare återställning.</p>
+                <p class="def">MTTR – aktiv tid för att byta eller reparera enheten. Lägre = snabbare aktiv återställning. Logistisk väntan räknas separat och påverkar Ao.</p>
                 <p class="meta" id="fieldInfo"></p>
               </div>
               <div class="rams-card">
@@ -130,7 +130,7 @@
               <div class="rams-card highlight">
                 <label id="aoLabel">Ao – operativ availability</label>
                 <div class="availability" id="aoValue">–</div>
-                <p class="def">Ao = MTBF / (MTBF + MTTR + MLDT). Visas initialt med modellens rekommenderade strategi och uppdateras när du väljer ett eget beslut. MLDT (Mean Logistics Delay Time) är väntan på reserv och beror på strategin, poolen och TAT.</p>
+                <p class="def">Ao = MTBF / (MTBF + MTTR + MLDT). Visar tillgängligheten med vald reparationsstrategi; innan du väljer visas modellens rekommendation. MLDT är logistisk väntan på reserv och beror bland annat på strategin, reservpoolen och TAT.</p>
                 <p class="meta" id="mldtInfo"></p>
               </div>
               <div class="rams-card">

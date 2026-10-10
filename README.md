@@ -1,4 +1,4 @@
-# ILS Analysis Trainer v44 – MTTR increase prediction
+# ILS Analysis Trainer v46 – Availability wording clarity
 
 En svensk, fristående lärapp för grundläggande LORA-resonemang med fiktiva data och förenklade beräkningar.
 
@@ -66,3 +66,9 @@ The first LORA question is intentionally simplified to compare repair cost only.
 - Förklarar att total kostnad inkluderar direkt livscykelkostnad plus modellerad stilleståndskostnad.
 - Tabellen benämner raden ”Direkt livscykelkostnad (exkl. stillestånd)” så att den inte blandas ihop med totalsumman.
 - Rekommendationen anger analysperiod och beskriver vilka kostnader som ingår i totalen.
+
+
+## v46 – Förtydligad MTTR, O-level och Ao
+- MTTR-beskrivningen skiljer nu aktiv bytestid från logistisk väntan.
+- O-level-fältbyte förklaras separat från I-level/D-level-reparationsstrategin.
+- Ao-texten förklarar att modellens rekommenderade strategi visas tills användaren väljer ett eget beslut.
