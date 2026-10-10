@@ -1,4 +1,4 @@
-# ILS Analysis Trainer v36 – Break-even exercise
+# ILS Analysis Trainer v37 – Central repair trade-offs
 
 En svensk, fristående lärapp för grundläggande LORA-resonemang med fiktiva data och förenklade beräkningar.
 
@@ -33,3 +33,11 @@ The first LORA question is intentionally simplified to compare repair cost only.
 - LORA question 5 now teaches the break-even calculation even when the current baseline scenario has no positive break-even.
 - If baseline assumptions support a positive break-even, the guide calculates it from those assumptions. Otherwise, it presents a clearly labeled separate illustrative scenario and explicitly preserves the baseline conclusion.
 - The example is a simplified investment-payback calculation, not a complete lifecycle-cost result.
+
+
+## v37 – Central repair trade-offs
+- Reframes test equipment as a requirement that may exist at both I-level and D-level, rather than assuming D-level uniquely needs it.
+- Teaches the possible scale advantage of shared central specialist equipment across multiple user locations.
+- Replaces the abstract break-even question with an illustrative comparison of setup cost savings versus transport cost per repair. The example is explicitly limited to those cost items.
+- The conclusion distinguishes economic cost from operational availability and lead time; it avoids treating peacetime or wartime as an automatic rule.
+- Resets saved LORA-guide answers once so old answers do not attach to the changed questions. Other saved data and decisions are preserved.

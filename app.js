@@ -32,7 +32,7 @@ const TRAINING_NOTE = {
 };
 const STORAGE_KEY = "ils-sandbox-v2";
 const MISSION_MOTOR_ID = "01A01";
-const MISSION_STORAGE_DEFAULTS = { prediction: "", mttrChanged: false, mttrBaseline: null, sensitivityReviewed: false, componentsVisited: [], dLevelExplained: false, summaryOpened: false, missionTwoStarted: false, reviewedMissionOneSteps: [], reviewedMissionTwoSteps: [], loraGuideStep: 0, loraGuideAnswers: {}, loraGuideVersion: 2, collapsed: false, railCollapsed: false };
+const MISSION_STORAGE_DEFAULTS = { prediction: "", mttrChanged: false, mttrBaseline: null, sensitivityReviewed: false, componentsVisited: [], dLevelExplained: false, summaryOpened: false, missionTwoStarted: false, reviewedMissionOneSteps: [], reviewedMissionTwoSteps: [], loraGuideStep: 0, loraGuideAnswers: {}, loraGuideVersion: 3, collapsed: false, railCollapsed: false };
 const missionState = { ...MISSION_STORAGE_DEFAULTS };
 
 /* ===== State ===== */
@@ -79,8 +79,8 @@ function loadState() {
     Object.assign(notes, s.notes || {});
     if (s.missionState && typeof s.missionState === "object") {
       Object.assign(missionState, MISSION_STORAGE_DEFAULTS, s.missionState);
-      if (Number(s.missionState.loraGuideVersion || 1) < 2) { missionState.loraGuideStep = 0; missionState.loraGuideAnswers = {}; }
-      missionState.loraGuideVersion = 2;
+      if (Number(s.missionState.loraGuideVersion || 1) < 3) { missionState.loraGuideStep = 0; missionState.loraGuideAnswers = {}; }
+      missionState.loraGuideVersion = 3;
       missionState.componentsVisited = Array.isArray(missionState.componentsVisited) ? missionState.componentsVisited.filter(id => components.some(c => c.id === id)) : [];
       if (! ["", "both", "ai", "neither"].includes(missionState.prediction)) missionState.prediction = "";
     }
@@ -822,11 +822,11 @@ function renderLoraMiniGuide() {
       `Reparera på D-level: ${fmt(repairD)}`
     ], correct: Math.min(unitPrice, repairI, repairD) === unitPrice ? 0 : (repairI <= repairD ? 1 : 2),
     explain: `Vi jämför bara grundkostnaden: nytt ${fmt(unitPrice)}, I-level ${fmt(repairI)} och D-level ${fmt(repairD)}. Det här är första delen av LORA. Senare lägger vi till fler faktorer för att se hur de påverkar beslutet.` },
-    { title: "2. Lägg till investeringar", prompt: `Reparationen är inte den enda kostnaden. Testutrustning kostar ${fmt(testI)} på I-level och ${fmt(testD)} på D-level. Hur mycket större är D-level-investeringen?`, options: [
-      fmt(Math.abs(testD - testI)),
-      fmt(Math.abs(testD - testI) / 2),
-      fmt(testD + testI)
-    ], correct: 0, explain: `D-level kräver ${fmt(Math.abs(testD - testI))} mer i testutrustning enligt dessa antaganden. Det är en förenklad engångsinvestering; livslängd, nyttjandegrad och diskontering ingår inte.` },
+    { title: "2. Vem behöver testutrustningen?", prompt: `För att reparera med motsvarande kvalitet behöver både I-level och D-level rätt test- och reparationsutrustning. Vad kan vara den centrala ekonomiska fördelen med D-level?`, options: [
+      "D-level behöver aldrig testutrustning",
+      "En central verkstad kan dela dyr specialutrustning mellan flera användarställen",
+      "Transporten till central verkstad är alltid gratis"
+    ], correct: 1, explain: "Både lokal och central reparationskapacitet kan kräva utrustning, kompetens och kalibrering. D-level kan få en skalfördel om en central verkstad betjänar flera användarställen. Det är ingen automatisk besparing: kapacitet, nyttjandegrad, bemanning och transport måste räknas med." },
     { title: "3. Lägg till transport", prompt: `Nu räknar vi med transport till/från depå för D-level. I-level kostar ${fmt(repairI)} per reparation. D-level kostar ${fmt(repairD)} för själva reparationen plus ${fmt(transport)} i transport. Vilket har lägst kostnad per reparerad enhet, utan att räkna med BER?`, options: [
       `I-level: ${fmt(repairI)}`,
       `D-level: ${fmt(dWithTransportNoBer)}`,
@@ -838,34 +838,18 @@ function renderLoraMiniGuide() {
       "Den ersätts med en ny enhet i stället för att repareras",
       "Transportkostnaden blir alltid dubbelt så hög"
     ], correct: 1, explain: "I modellen ersätts BER-enheter med en ny enhet. BER är en bedömning, inte en automatisk regel om att en fast andel alltid måste kasseras. Nu kan vi väga in både transport och BER i kostnadsjämförelsen." },
-    { title: "5. Hitta brytpunkten", prompt: (() => {
-      const scenarioInvestment = extraInvestment > 0 ? extraInvestment : 40000;
-      const scenarioSaving = savingPerFailure > 0 ? savingPerFailure : Math.max(1, Math.round(scenarioInvestment / 10));
-      const scenarioBreakEven = Math.ceil(scenarioInvestment / scenarioSaving);
-      return breakEven !== null
-        ? `I grundscenariot sparar D-level ${fmt(savingPerFailure)} per felhändelse och kräver ${fmt(extraInvestment)} mer i investering. Brytpunkten är cirka ${breakEven} felhändelser. Vilken beräkning ger den?`
-        : `I grundscenariot finns ingen positiv brytpunkt eftersom D-level inte sparar pengar per felhändelse. Vi provar därför ett separat räkneexempel: anta en extra investering på ${fmt(scenarioInvestment)} och en besparing på ${fmt(scenarioSaving)} per felhändelse. Hur många felhändelser krävs för att täcka investeringen?`;
-    })(), options: (() => {
-      const scenarioInvestment = extraInvestment > 0 ? extraInvestment : 40000;
-      const scenarioSaving = savingPerFailure > 0 ? savingPerFailure : Math.max(1, Math.round(scenarioInvestment / 10));
-      const scenarioBreakEven = Math.ceil(scenarioInvestment / scenarioSaving);
-      return [ `${Math.max(1, Math.round(scenarioBreakEven / 2))} felhändelser`, `${scenarioBreakEven} felhändelser`, `${scenarioBreakEven * 2} felhändelser` ];
-    })(), correct: 1,
-      explain: (() => {
-        const scenarioInvestment = extraInvestment > 0 ? extraInvestment : 40000;
-        const scenarioSaving = savingPerFailure > 0 ? savingPerFailure : Math.max(1, Math.round(scenarioInvestment / 10));
-        const scenarioBreakEven = Math.ceil(scenarioInvestment / scenarioSaving);
-        return breakEven !== null
-          ? `${fmt(extraInvestment)} delat med ${fmt(savingPerFailure)} i besparing per felhändelse ger cirka ${scenarioBreakEven} felhändelser. Det är en förenklad brytpunkt; livscykel- och operativa effekter kan ändra beslutet.`
-          : `I det här separata räkneexemplet blir ${fmt(scenarioInvestment)} delat med ${fmt(scenarioSaving)} per felhändelse = ${scenarioBreakEven} felhändelser. Det visar hur en brytpunkt räknas, men ändrar inte grundscenariots slutsats: där finns ingen positiv brytpunkt med nuvarande antaganden.`;
-      })() },
+    { title: "5. När lönar sig central reparation?", prompt: "Tänk på ett förenklat scenario med flera användarställen. Lokal I-level-kapacitet kräver sammanlagt 240 000 kr i utrustning. En gemensam D-level-verkstad kostar 160 000 kr att etablera, men transporten gör att varje D-level-reparation kostar 3 000 kr mer än en I-level-reparation. Vad visar kalkylen?", options: [
+      "D-level sparar 80 000 kr i etablering, vilket motsvarar cirka 27 reparationers extra transportkostnad",
+      "D-level är alltid bäst eftersom utrustningen är central",
+      "I-level är alltid bäst eftersom transport kostar pengar"
+    ], correct: 0, explain: "Den centrala verkstaden kostar 80 000 kr mindre att etablera (240 000 − 160 000). Men varje reparation kostar 3 000 kr mer i transport. 80 000 ÷ 3 000 ≈ 26,7: efter cirka 27 reparationer har transportmerkostnaden ätit upp etableringsfördelen, om vi isolerar just dessa poster. I det här förenklade exemplet är D-level alltså inte automatiskt billigast över hela analysperioden. Andra reparationskostnader, reservhållning, nyttjandegrad och ledtid måste också vägas in." },
     { title: "6. När är kassering rimligt?", prompt: "Vilket fall talar starkast för att kassera enheten i stället för att reparera den?", options: [
       "En reparationsmetod har lägre kostnad per reparation",
       "Enheten bedöms inte vara ekonomiskt eller tekniskt reparerbar",
       "Det finns testutrustning på depån"
     ], correct: 1, explain: "Kassering kan vara rimligt om enheten inte går att reparera tekniskt eller om reparationen bedöms olönsam. BER betyder Beyond Economic Repair. Beslutet behöver bedömas per komponent och mot projektets krav." }
   ];
-  if (step >= questions.length) return `<div class="mission-current-learn"><strong>Vad betyder det för LORA-beslutet?</strong><p>Du har gått från direktkostnad till investering, transport, BER och en förenklad brytpunkt. Varje faktor kan ändra vilket alternativ som verkar bäst.</p><p><strong>Kom ihåg:</strong> jämför även förväntad reparationsvolym, väntetid, kompetens, tillgänglighet och operativa krav. Modellen är ett jämförelseunderlag, inte ett automatiskt facit.</p><p><strong>Nästa steg:</strong> välj Kassera, I-level eller D-level i analysen och jämför ditt val med modellens rekommendation.</p></div>`;
+  if (step >= questions.length) return `<div class="mission-current-learn"><strong>Vad betyder det för LORA-beslutet?</strong><p>Du har jämfört reparationskostnad, delad utrustning, transport och BER. Central D-level-kapacitet kan ge skalfördelar när dyr utrustning delas mellan flera användarställen, men transport och längre ledtid kan minska eller upphäva vinsten.</p><p><strong>Ekonomi är inte hela beslutet:</strong> i fredstid kan längre ledtid vara acceptabel om reservtillgången är god. Vid hög beredskap kan snabb återställning väga tyngre än lägsta kostnad. Det beror på uppdragets krav och logistiska förutsättningar – inte en enkel regel om fred eller krig.</p><p><strong>Nästa steg:</strong> välj Kassera, I-level eller D-level i analysen och jämför ditt val med modellens rekommendation.</p></div>`;
   const q = questions[step];
   const answered = answers[step] !== undefined;
   const correct = answered && Number(answers[step]) === q.correct;
