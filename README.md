@@ -1,4 +1,4 @@
-# ILS Analysis Trainer v37 – Central repair trade-offs
+# ILS Analysis Trainer v38 – Guided LORA decision bridge
 
 En svensk, fristående lärapp för grundläggande LORA-resonemang med fiktiva data och förenklade beräkningar.
 
@@ -41,3 +41,12 @@ The first LORA question is intentionally simplified to compare repair cost only.
 - Replaces the abstract break-even question with an illustrative comparison of setup cost savings versus transport cost per repair. The example is explicitly limited to those cost items.
 - The conclusion distinguishes economic cost from operational availability and lead time; it avoids treating peacetime or wartime as an automatic rule.
 - Resets saved LORA-guide answers once so old answers do not attach to the changed questions. Other saved data and decisions are preserved.
+
+
+## v38 – Guided LORA decision bridge
+
+- Extends the LORA learning guide with five scaffolded decision steps after the introductory cost, equipment, transport, BER and break-even concepts.
+- The bridge progresses through technical feasibility, total relevant cost, lead time, operational constraints and a justified recommendation.
+- Each question is answered before its explanation appears, reducing the jump from single-factor exercises to an independent LORA decision.
+- Migrates the LORA guide to version 4 and resets its answers/step so earlier saved answers do not map to the new sequence; other saved progress is retained.
+- This remains a simplified learning model, not a validated LORA assessment.

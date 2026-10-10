@@ -32,7 +32,7 @@ const TRAINING_NOTE = {
 };
 const STORAGE_KEY = "ils-sandbox-v2";
 const MISSION_MOTOR_ID = "01A01";
-const MISSION_STORAGE_DEFAULTS = { prediction: "", mttrChanged: false, mttrBaseline: null, sensitivityReviewed: false, componentsVisited: [], dLevelExplained: false, summaryOpened: false, missionTwoStarted: false, reviewedMissionOneSteps: [], reviewedMissionTwoSteps: [], loraGuideStep: 0, loraGuideAnswers: {}, loraGuideVersion: 3, collapsed: false, railCollapsed: false };
+const MISSION_STORAGE_DEFAULTS = { prediction: "", mttrChanged: false, mttrBaseline: null, sensitivityReviewed: false, componentsVisited: [], dLevelExplained: false, summaryOpened: false, missionTwoStarted: false, reviewedMissionOneSteps: [], reviewedMissionTwoSteps: [], loraGuideStep: 0, loraGuideAnswers: {}, loraGuideVersion: 4, collapsed: false, railCollapsed: false };
 const missionState = { ...MISSION_STORAGE_DEFAULTS };
 
 /* ===== State ===== */
@@ -79,8 +79,8 @@ function loadState() {
     Object.assign(notes, s.notes || {});
     if (s.missionState && typeof s.missionState === "object") {
       Object.assign(missionState, MISSION_STORAGE_DEFAULTS, s.missionState);
-      if (Number(s.missionState.loraGuideVersion || 1) < 3) { missionState.loraGuideStep = 0; missionState.loraGuideAnswers = {}; }
-      missionState.loraGuideVersion = 3;
+      if (Number(s.missionState.loraGuideVersion || 1) < 4) { missionState.loraGuideStep = 0; missionState.loraGuideAnswers = {}; }
+      missionState.loraGuideVersion = 4;
       missionState.componentsVisited = Array.isArray(missionState.componentsVisited) ? missionState.componentsVisited.filter(id => components.some(c => c.id === id)) : [];
       if (! ["", "both", "ai", "neither"].includes(missionState.prediction)) missionState.prediction = "";
     }
@@ -847,9 +847,34 @@ function renderLoraMiniGuide() {
       "En reparationsmetod har lägre kostnad per reparation",
       "Enheten bedöms inte vara ekonomiskt eller tekniskt reparerbar",
       "Det finns testutrustning på depån"
-    ], correct: 1, explain: "Kassering kan vara rimligt om enheten inte går att reparera tekniskt eller om reparationen bedöms olönsam. BER betyder Beyond Economic Repair. Beslutet behöver bedömas per komponent och mot projektets krav." }
+    ], correct: 1, explain: "Kassering kan vara rimligt om enheten inte går att reparera tekniskt eller om reparationen bedöms olönsam. BER betyder Beyond Economic Repair. Beslutet behöver bedömas per komponent och mot projektets krav." },
+    { title: "7. Första beslutspunkten: går det att reparera?", prompt: "Innan du jämför kostnader, vad bör du kontrollera först?", options: [
+      "Om alternativen är tekniskt möjliga och tillgängliga",
+      "Vilket alternativ har lägst transportkostnad",
+      "Vilket alternativ modellen rekommenderar"
+    ], correct: 0, explain: "Börja med genomförbarheten. Ett alternativ som inte är tekniskt möjligt eller inte finns tillgängligt kan inte väljas, oavsett hur attraktivt det ser ut ekonomiskt." },
+    { title: "8. Jämför kostnaden", prompt: "Om både I-level och D-level är tekniskt möjliga, vad är nästa steg?", options: [
+      "Välj alltid det billigaste själva reparationsarbetet",
+      "Jämför relevanta kostnader över analysperioden, inklusive kapacitet och transport",
+      "Bortse från investeringen eftersom utrustning bara köps en gång"
+    ], correct: 1, explain: "Titta på relevanta kostnader över hela analysperioden. Etablering, nyttjandegrad, reparationer och transport kan påverka vilket alternativ som totalt blir billigast." },
+    { title: "9. Lägg till ledtiden", prompt: "D-level är billigare totalt, men återställningen tar längre tid. Vad behöver du fråga?", options: [
+      "Om längre ledtid är acceptabel för verksamheten och uppdraget",
+      "Om lägre kostnad automatiskt gör D-level bäst",
+      "Om ledtid bara spelar roll när transporten är gratis"
+    ], correct: 0, explain: "Kostnadsresultatet är viktigt men inte tillräckligt. Längre ledtid kan kräva fler reservdelar eller utbytesenheter och kan vara oacceptabel om tillgängligheten är kritisk." },
+    { title: "10. Finns det ett operativt hinder?", prompt: "Vad gör du om det billigaste alternativet inte uppfyller kravet på återställningstid?", options: [
+      "Väljer det ändå eftersom kostnaden väger tyngst",
+      "Markerar begränsningen och bedömer ett alternativ som uppfyller kravet",
+      "Ignorerar kravet tills efter beslutet"
+    ], correct: 1, explain: "Operativa krav kan vara begränsande villkor, inte bara ytterligare en kostnadspost. Ett ekonomiskt attraktivt alternativ kan behöva väljas bort om det inte uppfyller kraven." },
+    { title: "11. Samla resonemanget", prompt: "Vilken motivering är starkast för ett LORA-beslut?", options: [
+      "Jag valde det billigaste alternativet utan att jämföra annat",
+      "Jag valde modellens rekommendation eftersom den alltid är rätt",
+      "Jag jämförde genomförbarhet, totalkostnad, ledtid och operativa krav och redovisade mina antaganden"
+    ], correct: 2, explain: "Ett bra beslut visar hur slutsatsen följer av data och krav. Modellen är ett beslutsunderlag; antaganden, osäkerheter och operativa begränsningar behöver fortfarande granskas." }
   ];
-  if (step >= questions.length) return `<div class="mission-current-learn"><strong>Vad betyder det för LORA-beslutet?</strong><p>Du har jämfört reparationskostnad, delad utrustning, transport och BER. Central D-level-kapacitet kan ge skalfördelar när dyr utrustning delas mellan flera användarställen, men transport och längre ledtid kan minska eller upphäva vinsten.</p><p><strong>Ekonomi är inte hela beslutet:</strong> i fredstid kan längre ledtid vara acceptabel om reservtillgången är god. Vid hög beredskap kan snabb återställning väga tyngre än lägsta kostnad. Det beror på uppdragets krav och logistiska förutsättningar – inte en enkel regel om fred eller krig.</p><p><strong>Nästa steg:</strong> välj Kassera, I-level eller D-level i analysen och jämför ditt val med modellens rekommendation.</p></div>`;
+  if (step >= questions.length) return `<div class="mission-current-learn"><strong>Vad betyder det för LORA-beslutet?</strong><p>Du har gått från en faktor i taget till ett samlat beslut: genomförbarhet, totalkostnad, ledtid, operativa krav och BER. Central D-level-kapacitet kan ge skalfördelar när dyr utrustning delas mellan flera användarställen, men transport och längre ledtid kan minska eller upphäva vinsten.</p><p><strong>Ekonomi är inte hela beslutet:</strong> i fredstid kan längre ledtid vara acceptabel om reservtillgången är god. Vid hög beredskap kan snabb återställning väga tyngre än lägsta kostnad. Det beror på uppdragets krav och logistiska förutsättningar – inte en enkel regel om fred eller krig.</p><p><strong>Nästa steg:</strong> välj Kassera, I-level eller D-level i analysen och jämför ditt val med modellens rekommendation.</p></div>`;
   const q = questions[step];
   const answered = answers[step] !== undefined;
   const correct = answered && Number(answers[step]) === q.correct;
@@ -975,7 +1000,7 @@ document.addEventListener("click", e => {
     return;
   }
   if (e.target.closest("[data-lora-next]")) {
-    missionState.loraGuideStep = Math.min(6, Number(missionState.loraGuideStep || 0) + 1);
+    missionState.loraGuideStep = Math.min(11, Number(missionState.loraGuideStep || 0) + 1);
     saveState();
     renderMissions();
     return;
