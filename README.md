@@ -1,10 +1,35 @@
-# ILS Analysis Trainer v21
+# ILS Analysis Trainer v36 – Break-even exercise
 
-Pedagogisk demo för LCN, RAMS, LORA och Product Support.
+En svensk, fristående lärapp för grundläggande LORA-resonemang med fiktiva data och förenklade beräkningar.
 
-## v21
-- Känslighetsanalysen förklarar hur brytpunkter tas fram genom att en indata i taget varieras och total kostnad räknas om.
-- Brytpunkten förfinas med binärsökning efter att ett intervall med ändrad rekommendation hittats.
-- Förklaringen klargör att resultatet beror på modellens antaganden och inte är en universell gräns.
+## Starta
 
-Öppna `index.html` i en modern webbläsare. Filerna ska ligga tillsammans.
+Öppna `index.html` i en modern webbläsare. Alla fyra appfiler (`index.html`, `styles.css`, `data.js`, `app.js`) ska ligga i samma mapp.
+
+## Innehåll
+
+- `index.html` – gränssnitt och metodnoter
+- `styles.css` – layout och styling
+- `data.js` – fiktiv systemstruktur och modellantaganden
+- `app.js` – logik, uppdragsflöde och LORA-guide (Claude-versionen som användaren tillhandahöll)
+- `LICENSE` – licens
+
+## Viktigt
+
+Detta är en pedagogisk demonstration, inte en godkänd LORA/ILS-analys eller en validerad prognos. Kontrollera antaganden och modellens begränsningar innan resultaten används utanför övningen.
+
+
+### LORA guide refinement
+The first LORA question is intentionally simplified to compare repair cost only. Transport, BER, and test-equipment investment are introduced in later steps. The first question is visually highlighted to make the starting point clearer.
+
+
+## v35 – pedagogisk progression
+- LORA-guiden går stegvis från direktkostnad till investering, transport, BER, brytpunkt och kassering.
+- Första frågan introducerar de tre alternativen och skjuter upp transport och BER.
+- Äldre sparade svar i LORA-guiden nollställs en gång eftersom frågornas ordning och innehåll har ändrats. Övriga sparade komponentdata och beslut behålls.
+
+
+## v36 – Pedagogical break-even exercise
+- LORA question 5 now teaches the break-even calculation even when the current baseline scenario has no positive break-even.
+- If baseline assumptions support a positive break-even, the guide calculates it from those assumptions. Otherwise, it presents a clearly labeled separate illustrative scenario and explicitly preserves the baseline conclusion.
+- The example is a simplified investment-payback calculation, not a complete lifecycle-cost result.

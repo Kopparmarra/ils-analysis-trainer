@@ -1084,3 +1084,24 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 #termsDialog .method-dialog-actions {
   padding: 12px 20px;
 }
+
+/* Gör första LORA-frågan tydlig och lätt att börja med. */
+.lora-mini-guide-first {
+  border: 2px solid var(--accent, #2878b8);
+  background: #f2f8ff;
+  padding: 14px;
+}
+.lora-mini-guide-first .eyebrow {
+  color: var(--accent, #2878b8);
+  font-weight: 800;
+  letter-spacing: .04em;
+}
+.lora-mini-guide-first h4 {
+  font-size: 16px;
+  line-height: 1.35;
+  margin: 7px 0 9px;
+}
+.lora-mini-guide-first .lora-mini-option {
+  padding: 11px 12px;
+  font-weight: 600;
+}

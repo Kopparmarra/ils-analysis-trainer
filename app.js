@@ -32,7 +32,7 @@ const TRAINING_NOTE = {
 };
 const STORAGE_KEY = "ils-sandbox-v2";
 const MISSION_MOTOR_ID = "01A01";
-const MISSION_STORAGE_DEFAULTS = { prediction: "", mttrChanged: false, mttrBaseline: null, sensitivityReviewed: false, componentsVisited: [], dLevelExplained: false, summaryOpened: false, missionTwoStarted: false, reviewedMissionOneSteps: [], reviewedMissionTwoSteps: [], loraGuideStep: 0, loraGuideAnswers: {}, collapsed: false, railCollapsed: false };
+const MISSION_STORAGE_DEFAULTS = { prediction: "", mttrChanged: false, mttrBaseline: null, sensitivityReviewed: false, componentsVisited: [], dLevelExplained: false, summaryOpened: false, missionTwoStarted: false, reviewedMissionOneSteps: [], reviewedMissionTwoSteps: [], loraGuideStep: 0, loraGuideAnswers: {}, loraGuideVersion: 2, collapsed: false, railCollapsed: false };
 const missionState = { ...MISSION_STORAGE_DEFAULTS };
 
 /* ===== State ===== */
@@ -79,6 +79,8 @@ function loadState() {
     Object.assign(notes, s.notes || {});
     if (s.missionState && typeof s.missionState === "object") {
       Object.assign(missionState, MISSION_STORAGE_DEFAULTS, s.missionState);
+      if (Number(s.missionState.loraGuideVersion || 1) < 2) { missionState.loraGuideStep = 0; missionState.loraGuideAnswers = {}; }
+      missionState.loraGuideVersion = 2;
       missionState.componentsVisited = Array.isArray(missionState.componentsVisited) ? missionState.componentsVisited.filter(id => components.some(c => c.id === id)) : [];
       if (! ["", "both", "ai", "neither"].includes(missionState.prediction)) missionState.prediction = "";
     }
@@ -775,7 +777,7 @@ function missionOneChecks() {
   const motorDecision = decisions[MISSION_MOTOR_ID];
   const an = motor ? analyze(motor) : null;
   return [
-    { done: selected?.id === MISSION_MOTOR_ID, title: "Välj Elmotor", learn: "Börja med en avgränsad komponent så att du kan koppla indata till konsekvenser.", action: "Välj Elmotor i LCN-trädet." },
+    { done: missionState.componentsVisited.includes(MISSION_MOTOR_ID), title: "Välj Elmotor", learn: "Börja med en avgränsad komponent så att du kan koppla indata till konsekvenser.", action: "Välj Elmotor i LCN-trädet." },
     { done: missionState.prediction !== "" && missionState.mttrChanged, title: "Förutsäg och ändra MTTR", learn: "Ai bygger på reparations-/återställningstid i den här förenklade modellen. Ao påverkas dessutom av logistisk fördröjning, så effekten behöver inte bli lika stor.", action: "Välj förutsägelse nedan och ändra sedan MTTR-reglaget i analysen." },
     { done: Boolean(motorDecision), title: "Fatta ett LORA-beslut", learn: "Ett beslut väger kostnad och logistik mot var reparation kan utföras. Modellens rekommendation är ett jämförelseunderlag, inte ett universellt facit.", action: "Välj kassera, I-level eller D-level." },
     { done: note.length >= 20, title: "Motivera beslutet", learn: "En spårbar analys behöver visa vilka antaganden och avvägningar som ligger bakom valet.", action: "Skriv minst 20 tecken i Analyst Notes för Elmotor." },
@@ -797,18 +799,77 @@ function missionTwoChecks() {
 function renderLoraMiniGuide() {
   const step = Number(missionState.loraGuideStep || 0);
   const answers = missionState.loraGuideAnswers || {};
+  const motor = components.find(c => c.id === MISSION_MOTOR_ID);
+  const w = motor ? getWorking(motor) : { repairI: 900, repairD: 700, unitPrice: 4200, berPct: 20, testI: 40000, testD: 120000 };
+  const ber = Math.min(100, Math.max(0, Number(w.berPct) || 0)) / 100;
+  const repairI = Math.max(0, Number(w.repairI) || 0);
+  const repairD = Math.max(0, Number(w.repairD) || 0);
+  const transport = Math.max(0, Number(A.transport) || 0);
+  const unitPrice = Math.max(0, Number(w.unitPrice) || 0);
+  const testI = Math.max(0, Number(w.testI) || 0);
+  const testD = Math.max(0, Number(w.testD) || 0);
+  const iPerFailure = (1 - ber) * repairI + ber * unitPrice;
+  const dPerFailure = (1 - ber) * (repairD + transport) + ber * unitPrice;
+  const dWithTransportNoBer = repairD + transport;
+  const savingPerFailure = iPerFailure - dPerFailure;
+  const extraInvestment = testD - testI;
+  const breakEven = savingPerFailure > 0 && extraInvestment > 0 ? Math.ceil(extraInvestment / savingPerFailure) : null;
+  const fmt = n => fmtSEK(n);
   const questions = [
-    { title: "1. Jämför kostnaden per reparation", prompt: "I-level kostar 900 kr per reparation och D-level 700 kr. Hur mycket billigare är D-level per reparation?", options: ["100 kr billigare", "200 kr billigare", "200 kr dyrare"], correct: 1, explain: "900 − 700 = 200 kr. D-level sparar alltså 200 kr varje gång enheten repareras där i stället för på I-level." },
-    { title: "2. Jämför investeringarna", prompt: "Testutrustning kostar 40 000 kr på I-level och 120 000 kr på D-level. Hur mycket större är D-level-investeringen?", options: ["40 000 kr", "80 000 kr", "160 000 kr"], correct: 1, explain: "120 000 − 40 000 = 80 000 kr i extra investering för D-level." },
-    { title: "3. Hitta den förenklade brytpunkten", prompt: "D-level sparar 200 kr per reparation men kräver 80 000 kr extra i utrustning. Ungefär hur många reparationer behövs för att besparingen ska motsvara investeringen?", options: ["40 reparationer", "400 reparationer", "4 000 reparationer"], correct: 1, explain: "80 000 ÷ 200 = 400 reparationer. Det är en förenklad brytpunkt: den tar inte med exempelvis diskontering, BER-effekt, transport, väntetid eller andra kostnader." },
-    { title: "4. Jämför med att kassera", prompt: "En ny enhet kostar 4 200 kr. Om den gamla enheten går att reparera, vad är billigast sett enbart till den direkta kostnaden per enhet?", options: ["Kassera och köpa ny: 4 200 kr", "I-level-reparation: 900 kr", "D-level-reparation: 700 kr"], correct: 2, explain: "I de angivna direkta kostnaderna är D-level-reparation billigast (700 kr), därefter I-level (900 kr) och sist ny enhet (4 200 kr). Men detta är inte hela beslutet: enheten kanske inte går att reparera, BER kan gälla och väntetid, transport, utrustning och tillförlitlighet kan ändra jämförelsen." },
-    { title: "5. När är Kassera rimligt?", prompt: "Vilket fall talar starkast för att kassera enheten i stället för att reparera den?", options: ["D-level kostar 200 kr mindre per reparation", "Enheten bedöms inte vara ekonomiskt reparerbar eller kan inte repareras tekniskt", "Det finns testutrustning på depån"], correct: 1, explain: "Kassera kan vara rimligt om enheten inte går att reparera tekniskt eller om reparationen bedöms olönsam enligt de antaganden som används. BER betyder Beyond Economic Repair. Det är ett bedömningsunderlag, inte en automatisk regel om att en viss andel alltid ska kasseras." }
+    { title: "1. Börja enkelt: jämför de tre alternativen", prompt: "Vi börjar enkelt. Jämför de tre alternativen utifrån kostnaden för kassering eller reparation. Vi bortser tills vidare från transportkostnader och BER. Vilket alternativ har lägst direktkostnad?", options: [
+      `Kassera och köpa nytt: ${fmt(unitPrice)}`,
+      `Reparera på I-level: ${fmt(repairI)}`,
+      `Reparera på D-level: ${fmt(repairD)}`
+    ], correct: Math.min(unitPrice, repairI, repairD) === unitPrice ? 0 : (repairI <= repairD ? 1 : 2),
+    explain: `Vi jämför bara grundkostnaden: nytt ${fmt(unitPrice)}, I-level ${fmt(repairI)} och D-level ${fmt(repairD)}. Det här är första delen av LORA. Senare lägger vi till fler faktorer för att se hur de påverkar beslutet.` },
+    { title: "2. Lägg till investeringar", prompt: `Reparationen är inte den enda kostnaden. Testutrustning kostar ${fmt(testI)} på I-level och ${fmt(testD)} på D-level. Hur mycket större är D-level-investeringen?`, options: [
+      fmt(Math.abs(testD - testI)),
+      fmt(Math.abs(testD - testI) / 2),
+      fmt(testD + testI)
+    ], correct: 0, explain: `D-level kräver ${fmt(Math.abs(testD - testI))} mer i testutrustning enligt dessa antaganden. Det är en förenklad engångsinvestering; livslängd, nyttjandegrad och diskontering ingår inte.` },
+    { title: "3. Lägg till transport", prompt: `Nu räknar vi med transport till/från depå för D-level. I-level kostar ${fmt(repairI)} per reparation. D-level kostar ${fmt(repairD)} för själva reparationen plus ${fmt(transport)} i transport. Vilket har lägst kostnad per reparerad enhet, utan att räkna med BER?`, options: [
+      `I-level: ${fmt(repairI)}`,
+      `D-level: ${fmt(dWithTransportNoBer)}`,
+      "De kostar lika mycket"
+    ], correct: repairI < dWithTransportNoBer ? 0 : dWithTransportNoBer < repairI ? 1 : 2,
+    explain: `När transport räknas in blir D-level ${fmt(dWithTransportNoBer)} per reparation jämfört med ${fmt(repairI)} på I-level. Transporten kan alltså väga tyngre än den lägre reparationskostnaden. Här har vi fortfarande bortsett från BER.` },
+    { title: "4. Vad betyder BER?", prompt: "BER (Beyond Economic Repair) betyder att en enhet bedöms inte vara ekonomiskt reparerbar. Vad händer i den förenklade modellen när en felande enhet klassas som BER?", options: [
+      "Den repareras alltid på D-level",
+      "Den ersätts med en ny enhet i stället för att repareras",
+      "Transportkostnaden blir alltid dubbelt så hög"
+    ], correct: 1, explain: "I modellen ersätts BER-enheter med en ny enhet. BER är en bedömning, inte en automatisk regel om att en fast andel alltid måste kasseras. Nu kan vi väga in både transport och BER i kostnadsjämförelsen." },
+    { title: "5. Hitta brytpunkten", prompt: (() => {
+      const scenarioInvestment = extraInvestment > 0 ? extraInvestment : 40000;
+      const scenarioSaving = savingPerFailure > 0 ? savingPerFailure : Math.max(1, Math.round(scenarioInvestment / 10));
+      const scenarioBreakEven = Math.ceil(scenarioInvestment / scenarioSaving);
+      return breakEven !== null
+        ? `I grundscenariot sparar D-level ${fmt(savingPerFailure)} per felhändelse och kräver ${fmt(extraInvestment)} mer i investering. Brytpunkten är cirka ${breakEven} felhändelser. Vilken beräkning ger den?`
+        : `I grundscenariot finns ingen positiv brytpunkt eftersom D-level inte sparar pengar per felhändelse. Vi provar därför ett separat räkneexempel: anta en extra investering på ${fmt(scenarioInvestment)} och en besparing på ${fmt(scenarioSaving)} per felhändelse. Hur många felhändelser krävs för att täcka investeringen?`;
+    })(), options: (() => {
+      const scenarioInvestment = extraInvestment > 0 ? extraInvestment : 40000;
+      const scenarioSaving = savingPerFailure > 0 ? savingPerFailure : Math.max(1, Math.round(scenarioInvestment / 10));
+      const scenarioBreakEven = Math.ceil(scenarioInvestment / scenarioSaving);
+      return [ `${Math.max(1, Math.round(scenarioBreakEven / 2))} felhändelser`, `${scenarioBreakEven} felhändelser`, `${scenarioBreakEven * 2} felhändelser` ];
+    })(), correct: 1,
+      explain: (() => {
+        const scenarioInvestment = extraInvestment > 0 ? extraInvestment : 40000;
+        const scenarioSaving = savingPerFailure > 0 ? savingPerFailure : Math.max(1, Math.round(scenarioInvestment / 10));
+        const scenarioBreakEven = Math.ceil(scenarioInvestment / scenarioSaving);
+        return breakEven !== null
+          ? `${fmt(extraInvestment)} delat med ${fmt(savingPerFailure)} i besparing per felhändelse ger cirka ${scenarioBreakEven} felhändelser. Det är en förenklad brytpunkt; livscykel- och operativa effekter kan ändra beslutet.`
+          : `I det här separata räkneexemplet blir ${fmt(scenarioInvestment)} delat med ${fmt(scenarioSaving)} per felhändelse = ${scenarioBreakEven} felhändelser. Det visar hur en brytpunkt räknas, men ändrar inte grundscenariots slutsats: där finns ingen positiv brytpunkt med nuvarande antaganden.`;
+      })() },
+    { title: "6. När är kassering rimligt?", prompt: "Vilket fall talar starkast för att kassera enheten i stället för att reparera den?", options: [
+      "En reparationsmetod har lägre kostnad per reparation",
+      "Enheten bedöms inte vara ekonomiskt eller tekniskt reparerbar",
+      "Det finns testutrustning på depån"
+    ], correct: 1, explain: "Kassering kan vara rimligt om enheten inte går att reparera tekniskt eller om reparationen bedöms olönsam. BER betyder Beyond Economic Repair. Beslutet behöver bedömas per komponent och mot projektets krav." }
   ];
-  if (step >= questions.length) return `<div class="mission-current-learn"><strong>Vad betyder det för beslutet?</strong><p>Du har jämfört direkta reparationskostnader, investeringar, en förenklad brytpunkt och kostnaden för en ny enhet. Jämför nu kalkylen med förväntad reparationsvolym och väg in teknisk reparerbarhet, BER, väntetid, kompetens, transport och operativa krav.</p><p><strong>Nästa steg:</strong> välj Kassera, I-level eller D-level i analysen och jämför ditt val med modellens rekommendation. Modellen är ett jämförelseunderlag, inte ett automatiskt facit.</p></div>`;
+  if (step >= questions.length) return `<div class="mission-current-learn"><strong>Vad betyder det för LORA-beslutet?</strong><p>Du har gått från direktkostnad till investering, transport, BER och en förenklad brytpunkt. Varje faktor kan ändra vilket alternativ som verkar bäst.</p><p><strong>Kom ihåg:</strong> jämför även förväntad reparationsvolym, väntetid, kompetens, tillgänglighet och operativa krav. Modellen är ett jämförelseunderlag, inte ett automatiskt facit.</p><p><strong>Nästa steg:</strong> välj Kassera, I-level eller D-level i analysen och jämför ditt val med modellens rekommendation.</p></div>`;
   const q = questions[step];
   const answered = answers[step] !== undefined;
   const correct = answered && Number(answers[step]) === q.correct;
-  return `<section class="lora-mini-guide"><p class="eyebrow">LORA-GUIDE · DEL ${step + 1} AV ${questions.length}</p><h4>${q.title}</h4><p>${q.prompt}</p><div class="lora-mini-options">${q.options.map((opt,i)=>`<button type="button" class="lora-mini-option ${answered && i === Number(answers[step]) ? (correct ? "is-correct" : "is-wrong") : ""}" data-lora-answer="${i}" ${answered ? "disabled" : ""}>${opt}</button>`).join("")}</div>${answered ? `<div class="mission-current-learn"><strong>${correct ? "Rätt resonemang" : "Så kan du tänka"}</strong><p>${q.explain}</p></div><button type="button" class="header-btn dark" data-lora-next>${step < questions.length - 1 ? "Nästa del →" : "Visa slutsats →"}</button>` : `<p class="mission-feedback">Välj det svar du tycker stämmer. Du får se resonemanget efteråt.</p>`}</section>`;
+  return `<section class="lora-mini-guide ${step === 0 ? "lora-mini-guide-first" : ""}"><p class="eyebrow">LORA-GUIDE · DEL ${step + 1} AV ${questions.length}</p><h4>${q.title}</h4><p>${q.prompt}</p><div class="lora-mini-options">${q.options.map((opt,i)=>`<button type="button" class="lora-mini-option ${answered && i === Number(answers[step]) ? (correct ? "is-correct" : "is-wrong") : ""}" data-lora-answer="${i}" ${answered ? "disabled" : ""}>${opt}</button>`).join("")}</div>${answered ? `<div class="mission-current-learn"><strong>${correct ? "Rätt resonemang" : "Så kan du tänka"}</strong><p>${q.explain}</p></div><button type="button" class="header-btn dark" data-lora-next>${step < questions.length - 1 ? "Nästa del >" : "Visa slutsats >"}</button>` : `<p class="mission-feedback">Välj det svar du tycker stämmer. Du får se resonemanget efteråt.</p>`}</section>`;
 }
 
 function renderMissionSteps(containerId, checks) {
@@ -886,7 +947,7 @@ function renderMissions() {
     feedback.textContent = `${predictionText} Jämför värdena som visas nu. I modellen påverkas Ai direkt av MTTR, medan Ao även innehåller MLDT/logistikfördröjning.`;
     feedback.className = "mission-feedback has-result";
   }
-if (oneComplete) {
+if (oneComplete || missionState.missionTwoStarted) {
     const two = missionTwoChecks();
     const twoDone = two.filter(x => x.done).length;
     $("missionTwoProgress").textContent = `${twoDone} av ${two.length}`;
@@ -930,7 +991,7 @@ document.addEventListener("click", e => {
     return;
   }
   if (e.target.closest("[data-lora-next]")) {
-    missionState.loraGuideStep = Math.min(5, Number(missionState.loraGuideStep || 0) + 1);
+    missionState.loraGuideStep = Math.min(6, Number(missionState.loraGuideStep || 0) + 1);
     saveState();
     renderMissions();
     return;
