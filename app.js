@@ -33,8 +33,9 @@ const TRAINING_NOTE = {
 const STORAGE_KEY = "ils-sandbox-v2";
 const MISSION_MOTOR_ID = "01A01";
 const MISSION_TWO_COMPONENT_ID = "02B01";
-const MISSION_STORAGE_DEFAULTS = { prediction: "", mttrChanged: false, mttrBaseline: null, sensitivityReviewed: false, componentsVisited: [], dLevelExplained: false, summaryOpened: false, missionTwoStarted: false, missionTwoBaseline: null, reviewedMissionOneSteps: [], reviewedMissionTwoSteps: [], loraGuideStep: 0, loraGuideAnswers: {}, loraGuideVersion: 7, collapsed: false, railCollapsed: false };
-const missionState = { ...MISSION_STORAGE_DEFAULTS };
+const MISSION_STORAGE_DEFAULTS = { prediction: "", mttrChanged: false, mttrBaseline: null, sensitivityReviewed: false, componentsVisited: [], dLevelExplained: false, summaryOpened: false, missionTwoStarted: false, missionTwoBaseline: null, reviewedMissionOneSteps: [], reviewedMissionTwoSteps: [], loraGuideStep: 0, loraGuideAnswers: {}, loraGuideVersion: 8, collapsed: false, railCollapsed: false };
+const cloneMissionDefaults = () => JSON.parse(JSON.stringify(MISSION_STORAGE_DEFAULTS));
+const missionState = cloneMissionDefaults();
 
 /* ===== State ===== */
 let A = { ...DEFAULT_ASSUMPTIONS };
@@ -42,7 +43,7 @@ const working = {};   // id -> redigerbara värden per komponent
 const decisions = {}; // id -> "DISCARD" | "I" | "D"
 const notes = {};     // id -> text
 let selected = null;
-let guideMode = true;
+let guideMode = true; // Guidat läge är alltid aktivt i labbet; ingen toggle visas.
 let view = "empty";   // "empty" | "analysis" | "summary"
 
 const components = [];
@@ -79,9 +80,9 @@ function loadState() {
     Object.keys(decisions).forEach(id => { if (!["DISCARD","I","D"].includes(decisions[id])) delete decisions[id]; });
     Object.assign(notes, s.notes || {});
     if (s.missionState && typeof s.missionState === "object") {
-      Object.assign(missionState, MISSION_STORAGE_DEFAULTS, s.missionState);
-      if (Number(s.missionState.loraGuideVersion || 1) < 7) { missionState.loraGuideStep = 0; missionState.loraGuideAnswers = {}; }
-      missionState.loraGuideVersion = 7;
+      Object.assign(missionState, cloneMissionDefaults(), s.missionState);
+      if (Number(s.missionState.loraGuideVersion || 1) < 8) { missionState.loraGuideStep = 0; missionState.loraGuideAnswers = {}; }
+      missionState.loraGuideVersion = 8;
       missionState.componentsVisited = Array.isArray(missionState.componentsVisited) ? missionState.componentsVisited.filter(id => components.some(c => c.id === id)) : [];
       if (! ["", "both", "ai", "neither"].includes(missionState.prediction)) missionState.prediction = "";
     }
@@ -279,7 +280,7 @@ function closeMethodDialog() {
 $("methodInfoBtn").addEventListener("click", openMethodDialog);
 $("closeMethodDialog").addEventListener("click", closeMethodDialog);
 methodDialog.addEventListener("click", e => { if (e.target === methodDialog) closeMethodDialog(); });
-if (!localStorage.getItem(METHOD_SEEN_KEY)) openMethodDialog();
+// Första besöket ska börja i appen; metodinformationen öppnas via knappen.
 
 /* ===== Träd ===== */
 function renderTree(node, container, level = 1) {
@@ -391,6 +392,10 @@ function selectComponent(node) {
   showView("analysis");
   $("selectedLcn").textContent = `LCN ${node.lcn}: ${node.name}`;
   syncInputs();
+  if (node.id === MISSION_MOTOR_ID) {
+    missionState.componentsVisited = [...new Set([...missionState.componentsVisited, MISSION_MOTOR_ID])];
+    saveState();
+  }
   const ta = $("analystNotes");
   ta.value = notes[node.id] || "";
   $("notesLabel").textContent = `LCN ${node.lcn} – ${node.name}`;
@@ -429,9 +434,12 @@ function renderRAMS(an) {
   const w = an.w;
   const node = an.node;
   const decision = decisions[node.id];
-  // Visa alltid Ao: användarens val om det finns, annars modellens rekommenderade strategi.
-  // Guidat läge ska styra uppdragen, inte dölja ett centralt analysresultat.
-  const shown = decision || an.recommended;
+  // Visa dynamisk Ao även före beslut, men välj bara en strategi som är tillgänglig.
+  // Referensen är inte modellens rekommendation och får inte vara ett otillgängligt alternativ.
+  const availableReference = STRATEGIES.find(key => key === "I" && an.result[key]?.available)
+    || STRATEGIES.find(key => an.result[key]?.available)
+    || "DISCARD";
+  const shown = decision || availableReference;
 
   $("mtbfValue").textContent = fmtNum(w.mtbf, 0);
   $("mttrValue").textContent = fmtNum(w.mttr, 0);
@@ -441,14 +449,15 @@ function renderRAMS(an) {
   $("critInfo").textContent = `Kritikalitet: ${CRIT_LABEL[node.criticality]} (stilleståndsvikt ×${CRIT_FACTOR[node.criticality]})`;
   $("aiValue").textContent = fmtPct(an.ai);
 
-  if (shown) {
+  {
     const r = an.result[shown];
     $("aoValue").textContent = fmtPct(r.ao);
-    $("aoLabel").textContent = `Ao med strategi: ${STRATEGY_SHORT[shown]}${decision ? "" : " (rekommenderad)"}`;
-    $("mldtInfo").textContent = `MLDT ≈ ${fmtNum(r.mldtH, 1)} h (sannolikhet för slut på reserv ${fmtNum(r.pStockout * 100, 1)} %, TAT ${fmtNum(r.tatDays, 0)} dygn)`;
-  } else {
-    $("aoValue").textContent = "–";
-    $("aoLabel").textContent = "Ao – operativ availability";
+    $("aoLabel").textContent = decision
+      ? `Ao med ditt val: ${STRATEGY_SHORT[shown]}`
+      : `Ao – referens med ${STRATEGY_SHORT[shown]} (ändras med indata)`;
+    $("mldtInfo").textContent = decision
+      ? `MLDT ≈ ${fmtNum(r.mldtH, 1)} h (sannolikhet för slut på reserv ${fmtNum(r.pStockout * 100, 1)} %, TAT ${fmtNum(r.tatDays, 0)} dygn)`
+      : `Referensvärde för ${STRATEGY_SHORT[shown]}: MLDT ≈ ${fmtNum(r.mldtH, 1)} h. Värdet räknas om när du ändrar indata; gör sedan ditt LORA-val för att visa resultatet för vald strategi.`;
   }
 
   $("failureMode").textContent = node.rams.failureMode;
@@ -466,6 +475,7 @@ function renderRAMS(an) {
 
 function renderLORA(an) {
   const node = an.node;
+  const w = an.w;
   const decision = decisions[node.id];
   const show = revealed();
   const r = an.result;
@@ -480,6 +490,20 @@ function renderLORA(an) {
     btn.setAttribute("aria-pressed", String(decision === k));
     btn.title = r[k].available ? "" : "Ej tillgängligt: komplexiteten är för hög för reparation på I-level";
   });
+
+  // Beslutsunderlag före valet: relevanta indata, utan totalsummor eller rekommendation.
+  const brief = $("decisionBriefBody");
+  const expectedFailures = A.fleetSize * node.qty * A.hoursPerYear / w.mtbf * A.years;
+  brief.innerHTML = `<div class="decision-brief-grid">
+    <div><strong>Analysperiod</strong><span>${A.years} år</span></div>
+    <div><strong>Flotta</strong><span>${A.fleetSize} system · ${fmtNum(A.hoursPerYear,0)} drifttimmar/system/år</span></div>
+    <div><strong>MTBF / MTTR</strong><span>${fmtNum(w.mtbf,0)} h / ${fmtNum(w.mttr,0)} min</span></div>
+    <div><strong>Förväntade fel</strong><span>cirka ${fmtNum(expectedFailures,1)} under perioden i hela flottan</span></div>
+  </div><div class="decision-brief-grid costs">
+    <div><strong>Kassera</strong><span>Ny enhet: ${fmtSEK(w.unitPrice)} · ledtid ${A.leadTime} dygn</span></div>
+    <div><strong>I-level</strong><span>Reparation: ${fmtSEK(w.repairI)} · testutrustning ${fmtSEK(w.testI)} · TAT ${A.tatI} dygn</span></div>
+    <div><strong>D-level</strong><span>Reparation: ${fmtSEK(w.repairD)} · testutrustning ${fmtSEK(w.testD)} · TAT ${A.tatD} dygn · transport ${fmtSEK(A.transport)}</span></div>
+  </div><p class="decision-brief-note"><strong>Antagande:</strong> BER ${fmtNum(w.berPct,0)} %. För I- och D-level ersätts enheter som inte är ekonomiskt reparerbara med nya. Reservpool, ledtider och modellerat stillestånd påverkar också totalen. <strong>Fundera på:</strong> vilket alternativ verkar rimligast med hänsyn till kostnad, investering, reservtillgång och återställningstid?</p>`;
 
   // I guidat läge visas inte facit eller jämförelsetabellen förrän användaren har valt.
   const recBox = $("recommendation");
@@ -514,7 +538,6 @@ function renderLORA(an) {
   };
   const row = (label, fn) => `<tr><td><strong>${label}</strong></td>${STRATEGIES.map(k => cell(k, fn(r[k], k))).join("")}</tr>`;
 
-  const w = an.w;
   const compText = {
     DISCARD: "Fälttekniker (endast byte)",
     I: "Tekniker på förbandsverkstad",
@@ -714,7 +737,26 @@ document.querySelectorAll("[data-w]").forEach(el => {
     }
     saveState(); renderAll();
   };
-  el.addEventListener(el.type === "range" ? "input" : "change", update);
+  if (el.type === "range") {
+    let renderTimer;
+    const debouncedUpdate = () => {
+      // Read and persist the slider value immediately; defer the expensive full render
+      // until the user pauses dragging, then render once more on release.
+      const k = el.dataset.w;
+      if (!selected) return;
+      const w = getWorking(selected);
+      const rule = INPUT_RULES[k] || { min: Number(el.min), max: Number(el.max) };
+      w[k] = boundedNumber(el.value, rule);
+      if (selected.id === MISSION_MOTOR_ID && k === "mttr" && missionState.prediction && w[k] > Number(missionState.mttrBaseline ?? selected.rams.mttr) + 0.01) missionState.mttrChanged = true;
+      saveState();
+      clearTimeout(renderTimer);
+      renderTimer = setTimeout(() => renderAll(), 100);
+    };
+    el.addEventListener("input", debouncedUpdate);
+    el.addEventListener("change", () => { clearTimeout(renderTimer); update(); });
+  } else {
+    el.addEventListener("change", update);
+  }
 });
 
 document.querySelectorAll("[data-a]").forEach(el => {
@@ -746,11 +788,8 @@ $("lcnInfoBtn").addEventListener("click", () => {
   $("lcnInfoBtn").setAttribute("aria-expanded", String(!box.hidden));
 });
 
-$("guideMode").addEventListener("change", e => {
-  guideMode = e.target.checked;
-  document.body.classList.toggle("guide-off", !guideMode);
-  renderAll();
-});
+// Guidat läge är permanent aktivt i labbet. Ingen knapp eller handler behövs.
+document.body.classList.remove("guide-off");
 
 $("summaryBtn").addEventListener("click", () => {
   if (view === "summary") showView(selected ? "analysis" : "empty");
@@ -765,7 +804,7 @@ $("resetBtn").addEventListener("click", () => {
   try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* ignorera */ }
   A = { ...DEFAULT_ASSUMPTIONS };
   [working, decisions, notes].forEach(o => Object.keys(o).forEach(k => delete o[k]));
-  Object.assign(missionState, MISSION_STORAGE_DEFAULTS);
+  Object.assign(missionState, cloneMissionDefaults());
   missionState.mttrBaseline = null;
   syncInputs();
   if ($("analystNotes")) $("analystNotes").value = "";
@@ -859,11 +898,11 @@ function renderLoraMiniGuide() {
       "Den ersätts med en ny enhet i stället för att repareras",
       "Transportkostnaden blir alltid dubbelt så hög"
     ], correct: 1, explain: "I modellen ersätts BER-enheter med en ny enhet. BER är en bedömning, inte en automatisk regel om att en fast andel alltid måste kasseras. Nu kan vi väga in både transport och BER i kostnadsjämförelsen." },
-    { title: "5. När lönar sig central reparation?", prompt: `Använd nu Radiomodule ns faktiska kostnadsdata. Utrustning för I-level kostar ${fmt(testI)} kr och för D-level ${fmt(testD)} kr. En I-level-reparation kostar ${fmt(repairI)} kr. En D-level-reparation kostar ${fmt(repairD)} kr plus ${fmt(transport)} kr i transport. Vilket alternativ är billigast om vi bara jämför dessa kostnader?`.replace("Radiomodule ns", "Radiomodulens"), options: [
+    { title: "5. När lönar sig central reparation?", prompt: `Använd nu ${guideComponent?.name || "komponentens"} faktiska kostnadsdata. Utrustning för I-level kostar ${fmt(testI)} och för D-level ${fmt(testD)}. En I-level-reparation kostar ${fmt(repairI)}. En D-level-reparation kostar ${fmt(repairD)} plus ${fmt(transport)} kr i transport. Vilket alternativ är billigast om vi bara jämför dessa kostnader?`, options: [
       `I-level är billigare både i utrustning och per reparation`,
       `D-level är billigare både i utrustning och per reparation`,
       `Kostnaderna går åt olika håll: ett alternativ är billigare i utrustning men dyrare per reparation`
-    ], correct: (testI <= testD && repairI <= dWithTransportNoBer) ? 0 : ((testD <= testI && dWithTransportNoBer <= repairI) ? 1 : 2), explain: `Med de värden som visas för ${guideComponent?.name || "komponenten"} kostar I-level-utrustningen ${fmt(testI)} kr och D-level-utrustningen ${fmt(testD)} kr. Per fel kostar I-level ${fmt(repairI)} kr, medan D-level kostar ${fmt(repairD)} + ${fmt(transport)} i transport = ${fmt(dWithTransportNoBer)} kr. ${testI <= testD && repairI <= dWithTransportNoBer ? "Med just dessa antaganden är I-level billigare både i etablering och per reparation. D-level når därför ingen ekonomisk brytpunkt i denna förenklade jämförelse." : testD <= testI && dWithTransportNoBer <= repairI ? "Med just dessa antaganden är D-level billigare både i etablering och per reparation, innan andra kostnader och ledtid vägs in." : "Kostnaderna går åt olika håll: ett alternativ kan vara billigare i etablering men dyrare per reparation. Då behöver du jämföra hur många reparationer som väntas under analysperioden för att hitta eventuell brytpunkt."} Jämförelsen använder samma kostnadsdata som panelen till vänster. Den är förenklad och omfattar inte automatiskt stillestånd, reservhållning, bemanning eller nyttjandegrad.` },
+    ], correct: (testI <= testD && repairI <= dWithTransportNoBer) ? 0 : ((testD <= testI && dWithTransportNoBer <= repairI) ? 1 : 2), explain: `Med de värden som visas för ${guideComponent?.name || "komponenten"} kostar I-level-utrustningen ${fmt(testI)} och D-level-utrustningen ${fmt(testD)}. Per fel kostar I-level ${fmt(repairI)}, medan D-level kostar ${fmt(repairD)} + ${fmt(transport)} i transport = ${fmt(dWithTransportNoBer)} kr. ${testI <= testD && repairI <= dWithTransportNoBer ? "Med just dessa antaganden är I-level billigare både i etablering och per reparation. D-level når därför ingen ekonomisk brytpunkt i denna förenklade jämförelse." : testD <= testI && dWithTransportNoBer <= repairI ? "Med just dessa antaganden är D-level billigare både i etablering och per reparation, innan andra kostnader och ledtid vägs in." : "Kostnaderna går åt olika håll: ett alternativ kan vara billigare i etablering men dyrare per reparation. Då behöver du jämföra hur många reparationer som väntas under analysperioden för att hitta eventuell brytpunkt."} Jämförelsen använder samma kostnadsdata som panelen till vänster. Den är förenklad och omfattar inte automatiskt stillestånd, reservhållning, bemanning eller nyttjandegrad.` },
     { title: "6. När är kassering rimligt?", prompt: "Vilket fall talar starkast för att kassera enheten i stället för att reparera den?", options: [
       "En reparationsmetod har lägre kostnad per reparation",
       "Enheten bedöms inte vara ekonomiskt eller tekniskt reparerbar",
@@ -932,8 +971,9 @@ function renderMissionSteps(containerId, checks) {
 function renderMissions() {
   const panel = $("missionPanel");
   if (!panel) return;
-  panel.hidden = !guideMode;
-  $("freeExploreNote").hidden = guideMode;
+  panel.hidden = false;
+  // Guided mode is always on; the note is reserved for explicit course-to-lab bridges.
+  if ($("freeExploreNote").textContent.trim() === "") $("freeExploreNote").hidden = true;
   const rail = $("missionRail");
   rail.classList.toggle("is-rail-collapsed", missionState.railCollapsed && guideMode);
   $("missionRailToggle").textContent = missionState.railCollapsed ? "Visa panel" : "Dölj panel";
@@ -1056,7 +1096,7 @@ $("missionCollapse").addEventListener("click", () => {
   missionState.collapsed = !missionState.collapsed; saveState(); renderMissions();
 });
 $("missionReset").addEventListener("click", () => {
-  Object.assign(missionState, MISSION_STORAGE_DEFAULTS);
+  Object.assign(missionState, cloneMissionDefaults());
   missionState.mttrBaseline = selected?.id === MISSION_MOTOR_ID ? getWorking(selected).mttr : null;
   saveState(); renderMissions();
 });
@@ -1066,6 +1106,8 @@ document.addEventListener("click", e => {
 
 /* ===== Init ===== */
 loadState();
+// Keep saved mission progress across reloads; reset is available explicitly in the UI.
+saveState();
 renderTree(systemData, lcnTreeEl);
 syncInputs();
 showView("empty");
@@ -1083,3 +1125,4 @@ renderMissions();
     if (event.target === dialog) dialog.close();
   });
 })();
+

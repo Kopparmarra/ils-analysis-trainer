@@ -21,19 +21,59 @@
         </div>
       </div>
       <div class="header-right">
+        <button class="header-btn" id="courseModeBtn" type="button" aria-pressed="true">Kurs</button>
+        <button class="header-btn ghost" id="labModeBtn" type="button" aria-pressed="false">Öppna labb</button>
         <button class="header-btn ghost" id="termsBtn" type="button">Begrepp</button>
         <button class="header-btn ghost" id="methodInfoBtn" type="button">Modellinfo</button>
         <button class="header-btn" id="summaryBtn" type="button" aria-pressed="false">Sammanfattning</button>
         <button class="header-btn ghost" id="resetBtn" type="button">Nollställ</button>
-        <label class="guide-toggle">
-          <input type="checkbox" id="guideMode" checked>
-          <span>Guidat läge</span>
-        </label>
+        
       </div>
     </header>
 
-    <!-- Main layout -->
-    <div class="main">
+    <!-- Guided course: one question per view -->
+    <section class="course-shell" id="courseShell" aria-labelledby="courseTitle">
+      <aside class="course-sidebar">
+        <div class="course-side-top">
+          <p class="eyebrow">GUIDAD KURS</p>
+          <h2 id="courseTitle">Lär dig LORA steg för steg</h2>
+          <p>40 korta frågor. Förstå resonemanget, inte bara svaret.</p>
+          <div class="course-total"><span id="courseDoneCount">0</span> av 40 avklarade</div>
+          <div class="course-progress-track"><span id="courseProgressFill"></span></div>
+        </div>
+        <nav id="courseChapterNav" class="course-chapter-nav" aria-label="Kurskapitel"></nav>
+        <div class="course-side-footer"><button type="button" id="resumeCourseBtn" class="text-button">Fortsätt kursen</button><button type="button" id="resetCourseBtn" class="text-button">Börja om kursen</button></div>
+      </aside>
+      <main class="course-main" id="courseMain" aria-live="polite">
+        <div class="course-welcome" id="courseWelcome">
+          <p class="eyebrow">ILS ANALYSIS TRAINER</p>
+          <h2>Från tekniska data till ett välgrundat beslut</h2>
+          <p>Du får en fråga i taget. Om svaret är fel får du en förklaring och kan försöka igen. Du går inte vidare förrän du har valt rätt.</p>
+          <div class="course-welcome-points"><span>01 · Förstå analysen</span><span>02 · Underhållsalternativ</span><span>03 · Logistik och tillgänglighet</span><span>04 · Kostnad och osäkerhet</span><span>05 · Rekommendation</span></div>
+          <button type="button" id="startCourseBtn" class="primary-action">Starta kursen <span aria-hidden="true">&gt;</span></button>
+        </div>
+        <article class="question-page" id="questionPage" hidden>
+          <div class="question-meta"><span id="questionChapter">Kapitel 1</span><span id="questionCount">Fråga 1 av 40</span></div>
+          <div class="question-progress-track"><span id="questionProgressFill"></span></div>
+          <p class="eyebrow" id="questionKicker">GRUNDBEGREPP</p>
+          <h2 id="questionTitle"></h2>
+          <p class="question-prompt" id="questionPrompt"></p>
+          <form id="questionForm">
+            <fieldset class="answer-list"><legend class="visually-hidden">Välj ett svar</legend><div id="answerOptions"></div></fieldset>
+            <div id="answerFeedback" class="answer-feedback" hidden aria-live="polite"></div>
+            <div class="question-actions"><button type="submit" id="checkAnswerBtn" class="primary-action" disabled>Kontrollera svar</button><button type="button" id="retryAnswerBtn" class="secondary-action" hidden>Försök igen</button><button type="button" id="nextQuestionBtn" class="primary-action" hidden>Nästa fråga <span aria-hidden="true">&gt;</span></button></div>
+          </form>
+          <div class="question-footer"><button type="button" id="previousQuestionBtn" class="text-button">&lt; Föregående</button><button type="button" id="backToCourseHomeBtn" class="text-button">Kursöversikt</button><button type="button" id="openLabFromCourseBtn" class="text-button">Öppna labben &gt;</button><button type="button" id="chapterLabBridgeBtn" class="secondary-action" hidden>Prova Elmotor i labbet</button></div>
+        </article>
+        <div class="course-complete" id="courseComplete" hidden>
+          <p class="eyebrow">KURSEN KLAR</p><h2>Du har gått igenom alla 40 frågor.</h2><p>Du har tränat på att tolka data, jämföra underhållsalternativ, bedöma osäkerheter och formulera beslutsunderlag. Prova nu att använda resonemanget i labbmiljön.</p><button type="button" id="openLabAtEndBtn" class="primary-action">Öppna analyslabben <span aria-hidden="true">&gt;</span></button><button type="button" id="reviewCourseBtn" class="secondary-action">Gå igenom frågorna igen</button>
+        </div>
+      </main>
+      <aside class="course-context"><div class="context-card"><p class="eyebrow">ATT KOMMA IHÅG</p><h3>Resonera före du väljer</h3><p>Skilj på modellens resultat, antagandena bakom det och rekommendationen som ska stödja ett beslut.</p></div><div class="context-card"><h3>Fördjupning</h3><p>Vill du undersöka faktiska indata och kostnader? Öppna labben när som helst.</p><button type="button" id="openLabFromSideBtn" class="secondary-action">Till labben</button></div></aside>
+    </section>
+
+    <!-- Main layout: existing analysis lab retained -->
+    <div class="main" id="analysisLab" hidden>
       <!-- Left: LCN Tree -->
       <aside class="sidebar">
         <div class="panel-header">
@@ -130,7 +170,7 @@
               <div class="rams-card highlight">
                 <label id="aoLabel">Ao – operativ availability</label>
                 <div class="availability" id="aoValue">–</div>
-                <p class="def">Ao = MTBF / (MTBF + MTTR + MLDT). Visar tillgängligheten med vald reparationsstrategi; innan du väljer visas modellens rekommendation. MLDT är logistisk väntan på reserv och beror bland annat på strategin, reservpoolen och TAT.</p>
+                <p class="def">Ao = MTBF / (MTBF + MTTR + MLDT). Visar tillgängligheten med vald reparationsstrategi. Välj strategi i LORA-panelen för att se Ao och MLDT. MLDT är logistisk väntan på reserv och beror bland annat på strategin, reservpoolen och TAT.</p>
                 <p class="meta" id="mldtInfo"></p>
               </div>
               <div class="rams-card">
@@ -196,6 +236,12 @@
                   <li><strong>Resurser:</strong> reservpool och eventuell testutrustning.</li>
                 </ul>
                 <p class="def">Välj det alternativ du tror är rimligast utifrån underlaget. Tabellen och modellens rekommendation visas efter ditt val.</p>
+              </section>
+
+              <section class="decision-brief" id="decisionBrief" aria-labelledby="decisionBriefTitle">
+                <h3 id="decisionBriefTitle">Beslutsunderlag – läs före valet</h3>
+                <p>Indata och logistiska antaganden för vald komponent. Kostnadstabell och rekommendation visas först efter ditt val.</p>
+                <div id="decisionBriefBody"></div>
               </section>
 
               <div class="decision-row">
@@ -317,7 +363,7 @@
               <strong>Uppdrag 1 klart.</strong> Jämför beslut, resultat och antaganden. Starta uppdrag 2 när du vill gå vidare.
             </div>
             <section class="mission-next" id="missionTwo" hidden aria-labelledby="missionTwoTitle">
-              <div class="panel-header"><h3 id="missionTwoTitle">Uppdrag 2 · Utforska LORA</h3><span class="mission-progress" id="missionTwoProgress">0 av 4</span></div>
+              <div class="panel-header"><h3 id="missionTwoTitle">Uppdrag 2 · Utforska LORA</h3><span class="mission-progress" id="missionTwoProgress">0 av 5</span></div>
               <p class="mission-intro">Jämför flera komponenter och se varför samma reparationsnivå inte passar överallt.</p>
               <ol class="mission-steps" id="missionTwoSteps"></ol>
             </section>
@@ -329,7 +375,7 @@
           <button class="header-btn dark" id="finishExportCsv" type="button">Exportera resultat (CSV)</button>
         </section>
         <div class="free-explore-note" id="freeExploreNote" hidden>
-          <strong>Fri utforskning</strong><p>Guidningen är av. Välj valfri komponent, ändra antaganden och jämför LORA-resultat i egen takt. Dina ändringar sparas lokalt i webbläsaren.</p>
+          <strong>Fri utforskning</strong><p>Vägledningen är alltid aktiv. Välj en komponent, ändra antaganden och jämför LORA-resultat i egen takt. Dina ändringar sparas lokalt i webbläsaren.</p>
         </div>
       </aside>
     </div>
@@ -381,5 +427,6 @@
 
   <script src="data.js"></script>
   <script src="app.js"></script>
+  <script src="course.js"></script>
 </body>
 </html>
